@@ -26,12 +26,13 @@
     <div id="auth-card" class="card">
         <h2 id="auth-title">Login</h2>
         <input type="text" id="username" placeholder="Username">
+        <input type="email" id="email" class="hidden" placeholder="Email Address">
         <input type="password" id="password" placeholder="Password">
         <button id="auth-btn" onclick="handleAuth()">Login</button>
         <p style="text-align: center;">
             <a href="#" onclick="toggleAuthMode(); return false;" id="auth-toggle" style="color: #38bdf8;">Need an account? Register</a>
         </p>
-        <div id="auth-error" style="color: #f87171;"></div>
+        <div id="auth-error" style="color: #f87171; margin-top: 10px;"></div>
     </div>
 
     <!-- Dashboard Area -->
@@ -64,19 +65,24 @@
             document.getElementById('auth-title').innerText = isRegister ? 'Register' : 'Login';
             document.getElementById('auth-btn').innerText = isRegister ? 'Register' : 'Login';
             document.getElementById('auth-toggle').innerText = isRegister ? 'Have an account? Login' : 'Need an account? Register';
+            document.getElementById('email').classList.toggle('hidden', !isRegister);
+            document.getElementById('auth-error').innerText = '';
         }
 
         async function handleAuth() {
+            document.getElementById('auth-error').innerText = '';
             const u = document.getElementById('username').value;
+            const e = document.getElementById('email').value;
             const p = document.getElementById('password').value;
             const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
             
+            const payload = isRegister ? { username: u, email: e, password: p } : { username: u, password: p };
+
             try {
                 const res = await fetch(API_URL + endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: u, password: p }),
-                    credentials: 'omit'
+                    body: JSON.stringify(payload)
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Authentication failed');
@@ -105,8 +111,8 @@
                 const res = await fetch(API_URL + '/v1/account');
                 const data = await res.json();
                 if (res.ok && data) {
-                    document.getElementById('val-balance').innerText = data.balance + ' ' + (data.currency || '');
-                    document.getElementById('val-equity').innerText = data.equity + ' ' + (data.currency || '');
+                    document.getElementById('val-balance').innerText = (data.balance ?? '-') + ' ' + (data.currency || '');
+                    document.getElementById('val-equity').innerText = (data.equity ?? '-') + ' ' + (data.currency || '');
                     document.getElementById('val-broker').innerText = data.broker || '-';
                     document.getElementById('val-account').innerText = data.account_number || '-';
                 }
