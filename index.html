@@ -77,8 +77,7 @@
                 const res = await fetch(API_URL + endpoint, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: e, password: p }),
-                    credentials: 'include'
+                    body: JSON.stringify({ email: e, password: p })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Authentication failed');
@@ -98,13 +97,13 @@
         }
 
         async function logout() {
-            await fetch(API_URL + '/v1/auth/logout', { method: 'POST', credentials: 'include' });
+            await fetch(API_URL + '/v1/auth/logout', { method: 'POST' });
             location.reload();
         }
 
         async function fetchAccountData() {
             try {
-                const res = await fetch(API_URL + '/v1/account', { credentials: 'include' });
+                const res = await fetch(API_URL + '/v1/account');
                 const data = await res.json();
                 if (res.ok && data) {
                     document.getElementById('val-balance').innerText = (data.balance ?? '-') + ' ' + (data.currency || '');
@@ -119,7 +118,7 @@
 
         async function createPairingCode() {
             try {
-                const res = await fetch(API_URL + '/v1/pairing/create', { method: 'POST', credentials: 'include' });
+                const res = await fetch(API_URL + '/v1/pairing/create', { method: 'POST' });
                 const data = await res.json();
                 if (res.ok && data.code) {
                     document.getElementById('pairing-code-display').innerHTML = 'Pairing Code: <code>' + data.code + '</code>';
