@@ -59,6 +59,15 @@
         const API_URL = 'https://api.tradeassist.online';
         let isRegister = false;
 
+        // Auto-login on reload if token exists
+        window.addEventListener('DOMContentLoaded', () => {
+            const token = localStorage.getItem('access_token');
+            const savedEmail = localStorage.getItem('user_email');
+            if (token) {
+                showDashboard(savedEmail || 'User');
+            }
+        });
+
         function toggleAuthMode() {
             isRegister = !isRegister;
             document.getElementById('auth-title').innerText = isRegister ? 'Register' : 'Login';
@@ -67,9 +76,16 @@
             document.getElementById('auth-error').innerText = '';
         }
 
+        function showDashboard(email) {
+            document.getElementById('auth-card').classList.add('hidden');
+            document.getElementById('dash-card').classList.remove('hidden');
+            document.getElementById('user-display').innerText = email;
+            fetchAccountData();
+        }
+
         async function handleAuth() {
             document.getElementById('auth-error').innerText = '';
-            const e = document.getElementById('email').value;
+            const e = document.getElementById('email').value.trim();
             const p = document.getElementById('password').value;
             const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
 
@@ -86,10 +102,9 @@
                     alert('Registration successful! Please login.');
                     toggleAuthMode();
                 } else {
-                    document.getElementById('auth-card').classList.add('hidden');
-                    document.getElementById('dash-card').classList.remove('hidden');
-                    document.getElementById('user-display').innerText = e;
-                    fetchAccountData();
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user_email', e);
+                    showDashboard(e);
                 }
             } catch (err) {
                 document.getElementById('auth-error').innerText = err.message;
@@ -97,19 +112,42 @@
         }
 
         async function logout() {
-            await fetch(API_URL + '/v1/auth/logout', { method: 'POST' });
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                await fetch(API_URL + '/v1/auth/logout', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+            }
+            localStorage.clear();
             location.reload();
         }
 
         async function fetchAccountData() {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+
             try {
-                const res = await fetch(API_URL + '/v1/account');
+                const res = await fetch(API_URL + '/v1/account', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
                 const data = await res.json();
-                if (res.ok && data) {
-                    document.getElementById('val-balance').innerText = (data.balance ?? '-') + ' ' + (data.currency || '');
-                    document.getElementById('val-equity').innerText = (data.equity ?? '-') + ' ' + (data.currency || '');
-                    document.getElementById('val-broker').innerText = data.broker || '-';
-                    document.getElementById('val-account').innerText = data.account_number || '-';
+                if (res.ok && data.ok) {
+                    if (data.status === 'NO_DEVICE_SNAPSHOT') {
+                        document.getElementById('val-balance').innerText = 'No Device';
+                        document.getElementById('val-equity').innerText = 'No Device';
+                        document.getElementById('val-broker').innerText = 'N/A';
+                        document.getElementById('val-account').innerText = 'N/A';
+                        return;
+                    }
+
+                    const snap = data.snapshot || {};
+                    const accountInfo = snap.account || snap;
+
+                    document.getElementById('val-balance').innerText = (accountInfo.balance ?? '-') + ' ' + (accountInfo.currency || '');
+                    document.getElementById('val-equity').innerText = (accountInfo.equity ?? '-') + ' ' + (accountInfo.currency || '');
+                    document.getElementById('val-broker').innerText = accountInfo.company || accountInfo.broker || '-';
+                    document.getElementById('val-account').innerText = accountInfo.login || accountInfo.account_number || '-';
                 }
             } catch (err) {
                 console.error(err);
@@ -117,8 +155,14 @@
         }
 
         async function createPairingCode() {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+
             try {
-                const res = await fetch(API_URL + '/v1/pairing/create', { method: 'POST' });
+                const res = await fetch(API_URL + '/v1/pairing/create', {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
                 const data = await res.json();
                 if (res.ok && data.code) {
                     document.getElementById('pairing-code-display').innerHTML = 'Pairing Code: <code>' + data.code + '</code>';
