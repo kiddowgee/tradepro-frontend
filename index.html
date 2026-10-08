@@ -42,7 +42,30 @@ th{color:#38bdf8;background:#0f172a}
   <p style="text-align:center;">
     <a href="#" onclick="toggleAuthMode();return false;" id="auth-toggle" style="color:#38bdf8;">Need an account? Register</a>
   </p>
+  <p id="forgot-wrap" style="text-align:center;margin-top:0;">
+    <a href="#" onclick="showForgot();return false;" style="color:#94a3b8;font-size:.9em;">Forgot password?</a>
+  </p>
   <div id="auth-error" class="error-text"></div>
+</div>
+
+<!-- FORGOT PASSWORD -->
+<div id="forgot-card" class="card hidden">
+  <h2>Reset your password</h2>
+  <p style="color:#94a3b8;margin-top:0;">Enter your account email and we will send you a link to choose a new password.</p>
+  <input type="email" id="forgot-email" placeholder="Email Address" autocomplete="email">
+  <button id="forgot-btn" onclick="sendResetLink()">Send reset link</button>
+  <p style="text-align:center;"><a href="#" onclick="showLogin();return false;" style="color:#38bdf8;">Back to login</a></p>
+  <div id="forgot-msg"></div>
+</div>
+
+<!-- CHOOSE NEW PASSWORD -->
+<div id="reset-card" class="card hidden">
+  <h2>Choose a new password</h2>
+  <input type="password" id="new-password" placeholder="New password (8+ characters)" autocomplete="new-password">
+  <input type="password" id="new-password2" placeholder="Repeat new password" autocomplete="new-password">
+  <button id="reset-btn" onclick="submitReset()">Set new password</button>
+  <p style="text-align:center;"><a href="#" onclick="showLogin();return false;" style="color:#38bdf8;">Back to login</a></p>
+  <div id="reset-msg" class="error-text"></div>
 </div>
 
 <!-- DASHBOARD -->
@@ -107,11 +130,99 @@ let fetchInProgress = false;
 
 const $ = (id) => document.getElementById(id);
 
+let resetToken = null;
+
 window.addEventListener('DOMContentLoaded', () => {
+  // A password reset link looks like  .../tradepro-frontend/#reset=TOKEN
+  const m = location.hash.match(/^#reset=([A-Za-z0-9_-]+)$/);
+  if (m) {
+    resetToken = m[1];
+    history.replaceState(null, '', location.pathname + location.search);   // remove the token from the address bar
+    $('auth-card').classList.add('hidden');
+    $('reset-card').classList.remove('hidden');
+    $('new-password2').addEventListener('keydown', (e) => { if (e.key === 'Enter') submitReset(); });
+    return;
+  }
   const token = localStorage.getItem('access_token');
   if (token) showDashboard(localStorage.getItem('user_email') || 'User');
   $('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') handleAuth(); });
 });
+
+function showLogin() {
+  $('forgot-card').classList.add('hidden');
+  $('reset-card').classList.add('hidden');
+  $('auth-card').classList.remove('hidden');
+}
+
+function showForgot() {
+  $('forgot-msg').innerText = '';
+  $('forgot-email').value = $('email').value;
+  $('auth-card').classList.add('hidden');
+  $('forgot-card').classList.remove('hidden');
+}
+
+async function sendResetLink() {
+  const email = $('forgot-email').value.trim();
+  const msg = $('forgot-msg');
+  msg.className = '';
+  if (!email.includes('@')) { msg.className = 'error-text'; msg.innerText = 'Enter a valid email address.'; return; }
+  $('forgot-btn').disabled = true;
+  try {
+    const res = await fetch(API_URL + '/v1/auth/forgot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    if (res.status === 429) {
+      msg.className = 'error-text';
+      msg.innerText = 'Too many attempts. Please wait a few minutes and try again.';
+    } else {
+      msg.style.color = '#4ade80';
+      msg.innerText = 'If that email is registered, a reset link is on its way. It is valid for 30 minutes. Check your spam folder too.';
+    }
+  } catch (err) {
+    msg.className = 'error-text';
+    msg.innerText = 'Cannot reach the server. Please try again shortly.';
+  } finally {
+    $('forgot-btn').disabled = false;
+  }
+}
+
+async function submitReset() {
+  const p1 = $('new-password').value;
+  const p2 = $('new-password2').value;
+  const msg = $('reset-msg');
+  msg.style.color = '';
+  msg.innerText = '';
+  if (p1.length < 8) { msg.innerText = 'Password must be at least 8 characters.'; return; }
+  if (p1 !== p2) { msg.innerText = 'The two passwords do not match.'; return; }
+  $('reset-btn').disabled = true;
+  try {
+    const res = await fetch(API_URL + '/v1/auth/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: resetToken, password: p1 })
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msg.innerText = data.error === 'invalid_or_expired_token'
+        ? 'This reset link is invalid, expired, or already used. Request a new one.'
+        : (data.error === 'too_many_requests' ? 'Too many attempts. Please wait a minute.' : (data.error || 'Reset failed'));
+      return;
+    }
+    localStorage.clear();
+    resetToken = null;
+    $('new-password').value = '';
+    $('new-password2').value = '';
+    showLogin();
+    $('auth-error').style.color = '#4ade80';
+    $('auth-error').innerText = 'Password updated. Please log in with your new password.';
+  } catch (err) {
+    msg.innerText = 'Cannot reach the server. Please try again shortly.';
+  } finally {
+    $('reset-btn').disabled = false;
+  }
+}
 
 function toggleAuthMode() {
   isRegister = !isRegister;
@@ -119,6 +230,7 @@ function toggleAuthMode() {
   $('auth-btn').innerText = isRegister ? 'Register' : 'Login';
   $('auth-toggle').innerText = isRegister ? 'Have an account? Login' : 'Need an account? Register';
   $('auth-error').innerText = '';
+  $('forgot-wrap').classList.toggle('hidden', isRegister);
 }
 
 function showDashboard(email) {
@@ -153,6 +265,7 @@ function setConnectionStatus(state) {
 }
 
 async function handleAuth() {
+  $('auth-error').style.color = '';
   $('auth-error').innerText = '';
   const email = $('email').value.trim();
   const password = $('password').value;
