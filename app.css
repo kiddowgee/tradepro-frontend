@@ -406,3 +406,183 @@ th {
     }
 
 }
+
+/* =========================================================
+   TradePro Light Liquid Glass Header
+   ========================================================= */
+
+:root {
+    --glass-bg: rgba(255, 255, 255, 0.72);
+    --glass-bg-strong: rgba(255, 255, 255, 0.88);
+    --glass-border: rgba(255, 255, 255, 0.78);
+    --glass-shadow:
+        0 10px 35px rgba(31, 41, 55, 0.08),
+        0 2px 8px rgba(31, 41, 55, 0.04);
+
+    --glass-text: #172033;
+    --glass-muted: #667085;
+    --glass-accent: #4169e1;
+    --glass-accent-soft: rgba(65, 105, 225, 0.10);
+}
+
+
+/* =========================================================
+   Desktop Floating Header
+   ========================================================= */
+
+@media (min-width: 769px) {
+
+    .app-header {
+        position: sticky;
+        top: 18px;
+        z-index: 1000;
+        pointer-events: none;
+    }
+
+    .header-inner {
+        pointer-events: auto;
+
+        background: var(--glass-bg);
+
+        border: 1px solid var(--glass-border);
+        border-radius: 22px;
+
+        box-shadow: var(--glass-shadow);
+
+        backdrop-filter: blur(24px) saturate(150%);
+        -webkit-backdrop-filter: blur(24px) saturate(150%);
+
+        transition:
+            box-shadow 0.25s ease,
+            background 0.25s ease,
+            transform 0.25s ease;
+    }
+
+    .header-inner:hover {
+        background: var(--glass-bg-strong);
+        box-shadow:
+            0 14px 40px rgba(31, 41, 55, 0.10),
+            0 3px 10px rgba(31, 41, 55, 0.05);
+    }
+
+    .brand {
+        color: var(--glass-text);
+    }
+
+    .brand-name {
+        color: var(--glass-text);
+    }
+
+    .nav-btn {
+        color: var(--glass-muted);
+        border-radius: 12px;
+
+        padding: 10px 13px;
+
+        transition:
+            background 0.2s ease,
+            color 0.2s ease,
+            transform 0.2s ease;
+    }
+
+    .nav-btn:hover {
+        color: var(--glass-text);
+        background: rgba(255, 255, 255, 0.65);
+    }
+
+    .nav-btn.active {
+        color: var(--glass-accent);
+        background: var(--glass-accent-soft);
+        font-weight: 600;
+    }
+
+}
+
+
+/* =========================================================
+   Mobile / Tablet Glass Header
+   ========================================================= */
+
+@media (max-width: 768px) {
+
+    .app-header {
+        position: sticky;
+        top: 10px;
+        z-index: 1000;
+        pointer-events: none;
+    }
+
+    .header-inner {
+        pointer-events: auto;
+
+        background: var(--glass-bg);
+
+        border: 1px solid var(--glass-border);
+        border-radius: 18px;
+
+        box-shadow: var(--glass-shadow);
+
+        backdrop-filter: blur(24px) saturate(150%);
+        -webkit-backdrop-filter: blur(24px) saturate(150%);
+    }
+
+    .brand {
+        color: var(--glass-text);
+    }
+
+    .brand-name {
+        color: var(--glass-text);
+    }
+
+    .menu-toggle {
+        color: var(--glass-text);
+
+        border: 1px solid rgba(255, 255, 255, 0.65);
+
+        background: rgba(255, 255, 255, 0.55);
+
+        box-shadow:
+            0 4px 12px rgba(31, 41, 55, 0.06);
+
+        backdrop-filter: blur(18px) saturate(150%);
+        -webkit-backdrop-filter: blur(18px) saturate(150%);
+
+        transition:
+            background 0.2s ease,
+            transform 0.2s ease;
+    }
+
+    .menu-toggle:active {
+        transform: scale(0.94);
+    }
+
+    .nav-bar {
+        background: var(--glass-bg-strong);
+
+        border: 1px solid var(--glass-border);
+        border-radius: 18px;
+
+        box-shadow:
+            0 16px 40px rgba(31, 41, 55, 0.10),
+            0 3px 10px rgba(31, 41, 55, 0.05);
+
+        backdrop-filter: blur(28px) saturate(150%);
+        -webkit-backdrop-filter: blur(28px) saturate(150%);
+    }
+
+    .nav-btn {
+        color: var(--glass-text);
+    }
+
+    .nav-btn:hover,
+    .nav-btn:focus-visible {
+        background: rgba(65, 105, 225, 0.08);
+    }
+
+    .nav-btn.active {
+        color: var(--glass-accent);
+        background: var(--glass-accent-soft);
+        font-weight: 600;
+    }
+
+}
