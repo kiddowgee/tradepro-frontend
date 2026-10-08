@@ -5,24 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TradePro Dashboard</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 900px; margin: 30px auto; padding: 0 20px; line-height: 1.5; background: #0f172a; color: #f8fafc; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 950px; margin: 30px auto; padding: 0 20px; line-height: 1.5; background: #0f172a; color: #f8fafc; }
         .card { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-        h1, h2 { margin-top: 0; color: #38bdf8; }
+        h1, h2, h3 { margin-top: 0; color: #38bdf8; }
         input, button { padding: 10px; margin: 5px 0; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: #fff; width: 100%; box-sizing: border-box; }
         button { background: #0284c7; font-weight: bold; cursor: pointer; border: none; margin-top: 10px; }
         button:hover { background: #0369a1; }
         .btn-danger { background: #dc2626; margin-top: 0; padding: 4px 8px; width: auto; font-size: 0.85em; }
         .btn-danger:hover { background: #b91c1c; }
         .hidden { display: none; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr 1fr; } }
         .stat { background: #0f172a; padding: 10px; border-radius: 4px; text-align: center; }
-        .stat-val { font-size: 1.4em; font-weight: bold; color: #4ade80; }
+        .stat-val { font-size: 1.3em; font-weight: bold; color: #4ade80; }
         code { background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #f43f5e; }
         table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9em; }
         th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
         th { background: #0f172a; color: #94a3b8; }
         .buy { color: #4ade80; font-weight: bold; }
         .sell { color: #f87171; font-weight: bold; }
+        .profit-pos { color: #4ade80; font-weight: bold; }
+        .profit-neg { color: #f87171; font-weight: bold; }
         .status-tag { padding: 2px 8px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
         .status-live { background: #065f46; color: #34d399; }
         .status-wait { background: #78350f; color: #fbbf24; }
@@ -64,6 +67,17 @@
             Auto-refreshing every 3s | Last updated: <span id="last-update">Never</span>
         </p>
 
+        <!-- Performance Analytics Section -->
+        <div style="margin-top: 25px;">
+            <h2>Performance Analytics</h2>
+            <div class="grid">
+                <div class="stat"><div>Total Trades</div><div class="stat-val" id="analytics-trades">0</div></div>
+                <div class="stat"><div>Closed P/L</div><div class="stat-val" id="analytics-pl">0.00</div></div>
+                <div class="stat"><div>Win Rate</div><div class="stat-val" id="analytics-winrate">0%</div></div>
+                <div class="stat"><div>Profit Factor</div><div class="stat-val" id="analytics-pf">0.00</div></div>
+            </div>
+        </div>
+
         <!-- Open Positions Section -->
         <div style="margin-top: 25px;">
             <h2>Open Positions (<span id="pos-count">0</span>)</h2>
@@ -102,6 +116,29 @@
                     </thead>
                     <tbody id="orders-table-body">
                         <tr><td colspan="5" style="text-align:center; color:#94a3b8;">No pending orders</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Trade History Section -->
+        <div style="margin-top: 25px;">
+            <h2>Closed Deal History (<span id="history-count">0</span>)</h2>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Ticket</th>
+                            <th>Symbol</th>
+                            <th>Type</th>
+                            <th>Volume</th>
+                            <th>Price</th>
+                            <th>Time</th>
+                            <th>Profit</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        <tr><td colspan="7" style="text-align:center; color:#94a3b8;">No closed deals</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -240,11 +277,13 @@
                     const mt5 = snap.mt5 || {};
                     const accountInfo = mt5.account || snap.account || snap;
 
+                    // Account stats
                     document.getElementById('val-balance').innerText = (accountInfo.balance ?? '-') + ' ' + (accountInfo.currency || '');
                     document.getElementById('val-equity').innerText = (accountInfo.equity ?? '-') + ' ' + (accountInfo.currency || '');
                     document.getElementById('val-broker').innerText = accountInfo.company || accountInfo.broker || '-';
                     document.getElementById('val-account').innerText = accountInfo.login || accountInfo.account_number || '-';
 
+                    // Positions
                     const positions = mt5.positions || [];
                     document.getElementById('pos-count').innerText = positions.length;
                     const posBody = document.getElementById('pos-table-body');
@@ -263,6 +302,7 @@
                         `).join('');
                     }
 
+                    // Orders
                     const orders = mt5.orders || [];
                     document.getElementById('orders-count').innerText = orders.length;
                     const orderBody = document.getElementById('orders-table-body');
@@ -279,10 +319,68 @@
                             </tr>
                         `).join('');
                     }
+
+                    // History & Analytics
+                    const history = (mt5.history && mt5.history.deals) ? mt5.history.deals : [];
+                    renderHistoryAndAnalytics(history, accountInfo.currency || '');
                 }
             } catch (err) {
                 console.error(err);
             }
+        }
+
+        function renderHistoryAndAnalytics(deals, currency) {
+            document.getElementById('history-count').innerText = deals.length;
+            const historyBody = document.getElementById('history-table-body');
+
+            if (deals.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">No closed deals</td></tr>';
+                document.getElementById('analytics-trades').innerText = '0';
+                document.getElementById('analytics-pl').innerText = '0.00 ' + currency;
+                document.getElementById('analytics-winrate').innerText = '0%';
+                document.getElementById('analytics-pf').innerText = '0.00';
+                return;
+            }
+
+            let totalPL = 0;
+            let wins = 0;
+            let grossProfit = 0;
+            let grossLoss = 0;
+
+            historyBody.innerHTML = deals.map(d => {
+                const profit = d.profit || 0;
+                totalPL += profit;
+                if (profit > 0) {
+                    wins++;
+                    grossProfit += profit;
+                } else if (profit < 0) {
+                    grossLoss += Math.abs(profit);
+                }
+
+                const timeStr = d.time ? new Date(d.time * 1000).toLocaleString() : '-';
+
+                return `
+                    <tr>
+                        <td>${d.ticket}</td>
+                        <td>${d.symbol || '-'}</td>
+                        <td class="${d.type === 0 ? 'buy' : 'sell'}">${d.type === 0 ? 'BUY' : 'SELL'}</td>
+                        <td>${d.volume || 0}</td>
+                        <td>${d.price || 0}</td>
+                        <td>${timeStr}</td>
+                        <td class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit.toFixed(2)} ${currency}</td>
+                    </tr>
+                `;
+            }).join('');
+
+            const totalTrades = deals.length;
+            const winRate = totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : '0';
+            const profitFactor = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : (grossProfit > 0 ? 'INF' : '0.00');
+
+            document.getElementById('analytics-trades').innerText = totalTrades;
+            document.getElementById('analytics-pl').innerText = totalPL.toFixed(2) + ' ' + currency;
+            document.getElementById('analytics-pl').className = 'stat-val ' + (totalPL >= 0 ? 'profit-pos' : 'profit-neg');
+            document.getElementById('analytics-winrate').innerText = winRate + '%';
+            document.getElementById('analytics-pf').innerText = profitFactor;
         }
 
         async function fetchDevices() {
