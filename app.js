@@ -416,3 +416,20 @@ async function createPairingCode() {
         }
     } catch (err) { alert('Error generating code'); }
 }
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js")
+      .then((registration) => {
+        console.log(
+          "TradePro service worker registered:",
+          registration.scope
+        );
+      })
+      .catch((error) => {
+        console.error(
+          "TradePro service worker registration failed:",
+          error
+        );
+      });
+  });
+}
