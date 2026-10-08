@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradePro Dashboard</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; line-height: 1.5; background: #0f172a; color: #f8fafc; }
+        .card { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+        h1, h2 { margin-top: 0; color: #38bdf8; }
+        input, button { padding: 10px; margin: 5px 0; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: #fff; width: 100%; box-sizing: border-box; }
+        button { background: #0284c7; font-weight: bold; cursor: pointer; border: none; margin-top: 10px; }
+        button:hover { background: #0369a1; }
+        .hidden { display: none; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .stat { background: #0f172a; padding: 10px; border-radius: 4px; text-align: center; }
+        .stat-val { font-size: 1.4em; font-weight: bold; color: #4ade80; }
+        code { background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #f43f5e; }
+    </style>
+</head>
+<body>
+
+    <h1>TradePro Dashboard</h1>
+
+    <!-- Auth Form -->
+    <div id="auth-card" class="card">
+        <h2 id="auth-title">Login</h2>
+        <input type="text" id="username" placeholder="Username">
+        <input type="password" id="password" placeholder="Password">
+        <button id="auth-btn" onclick="handleAuth()">Login</button>
+        <p style="text-align: center;">
+            <a href="#" onclick="toggleAuthMode(); return false;" id="auth-toggle" style="color: #38bdf8;">Need an account? Register</a>
+        </p>
+        <div id="auth-error" style="color: #f87171;"></div>
+    </div>
+
+    <!-- Dashboard Area -->
+    <div id="dash-card" class="card hidden">
+        <h2>Account Snapshot</h2>
+        <p>Logged in as: <b id="user-display"></b> | <a href="#" onclick="logout()" style="color: #f87171;">Logout</a></p>
+        
+        <div class="grid">
+            <div class="stat"><div>Balance</div><div class="stat-val" id="val-balance">-</div></div>
+            <div class="stat"><div>Equity</div><div class="stat-val" id="val-equity">-</div></div>
+            <div class="stat"><div>Broker</div><div id="val-broker">-</div></div>
+            <div class="stat"><div>Account #</div><div id="val-account">-</div></div>
+        </div>
+
+        <button onclick="fetchAccountData()" style="margin-top: 15px;">Refresh Data</button>
+
+        <hr style="border-color: #334155; margin: 20px 0;">
+
+        <h2>Pair New Connector</h2>
+        <button onclick="createPairingCode()">Generate 6-Digit Code</button>
+        <div id="pairing-code-display" style="margin-top: 10px; font-size: 1.2em;"></div>
+    </div>
+
+    <script>
+        const API_URL = 'https://api.tradeassist.online';
+        let isRegister = false;
+
+        function toggleAuthMode() {
+            isRegister = !isRegister;
+            document.getElementById('auth-title').innerText = isRegister ? 'Register' : 'Login';
+            document.getElementById('auth-btn').innerText = isRegister ? 'Register' : 'Login';
+            document.getElementById('auth-toggle').innerText = isRegister ? 'Have an account? Login' : 'Need an account? Register';
+        }
+
+        async function handleAuth() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
+            
+            try {
+                const res = await fetch(API_URL + endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u, password: p }),
+                    credentials: 'omit'
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Authentication failed');
+
+                if (isRegister) {
+                    alert('Registration successful! Please login.');
+                    toggleAuthMode();
+                } else {
+                    document.getElementById('auth-card').classList.add('hidden');
+                    document.getElementById('dash-card').classList.remove('hidden');
+                    document.getElementById('user-display').innerText = u;
+                    fetchAccountData();
+                }
+            } catch (err) {
+                document.getElementById('auth-error').innerText = err.message;
+            }
+        }
+
+        async function logout() {
+            await fetch(API_URL + '/v1/auth/logout', { method: 'POST' });
+            location.reload();
+        }
+
+        async function fetchAccountData() {
+            try {
+                const res = await fetch(API_URL + '/v1/account');
+                const data = await res.json();
+                if (res.ok && data) {
+                    document.getElementById('val-balance').innerText = data.balance + ' ' + (data.currency || '');
+                    document.getElementById('val-equity').innerText = data.equity + ' ' + (data.currency || '');
+                    document.getElementById('val-broker').innerText = data.broker || '-';
+                    document.getElementById('val-account').innerText = data.account_number || '-';
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+
+        async function createPairingCode() {
+            try {
+                const res = await fetch(API_URL + '/v1/pairing/create', { method: 'POST' });
+                const data = await res.json();
+                if (res.ok && data.code) {
+                    document.getElementById('pairing-code-display').innerHTML = 'Pairing Code: <code>' + data.code + '</code>';
+                } else {
+                    alert(data.error || 'Failed to generate code');
+                }
+            } catch (err) {
+                alert('Error generating code');
+            }
+        }
+    </script>
+</body>
+</html>
