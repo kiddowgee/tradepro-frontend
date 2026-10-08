@@ -267,19 +267,38 @@ async function fetchJournal() {
         if (res.ok && data.ok) {
             const container = document.getElementById('journal-list-container');
             const entries = data.journal || [];
+
             if (entries.length === 0) {
-                container.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:15px;">No saved trade reflections yet. Enter a ticket and reflection above to save to your cloud database.</div>';
+                container.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:15px;">No account trades or transactions pulled yet. Make sure your MT5 connector is connected.</div>';
                 return;
             }
-            container.innerHTML = entries.map(e => `
-                <div style="background:#0f172a; padding:12px; border-radius:6px; margin-bottom:10px; border-left:4px solid #0284c7;">
-                    <div style="display:flex; justify-content:space-between; font-size:0.9em;">
-                        <b>Ticket #${e.ticket} | ${e.setup_type || 'General Setup'}</b>
-                        <span style="color:#94a3b8;">${new Date(e.updated_at * 1000).toLocaleString()}</span>
+
+            container.innerHTML = entries.map(e => {
+                const isProfit = e.profit >= 0;
+                const profitText = e.profit !== 0 ? `<b style="color:${isProfit ? '#4ade80' : '#f87171'};">${e.profit.toFixed(2)}</b>` : '';
+                
+                return `
+                    <div style="background:#0f172a; padding:14px; border-radius:6px; margin-bottom:12px; border-left:4px solid ${e.type === 'DEPOSIT/WITHDRAWAL' ? '#eab308' : (isProfit ? '#4ade80' : '#f87171')};">
+                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.95em;">
+                            <div>
+                                <b style="font-size:1.1em;">${e.symbol}</b> 
+                                <span class="${e.type === 'BUY' ? 'buy' : 'sell'}" style="margin-left:8px;">${e.type}</span>
+                                <span style="color:#94a3b8; font-size:0.85em; margin-left:8px;">Vol: ${e.volume} | Ticket #${e.ticket}</span>
+                            </div>
+                            <div>
+                                ${profitText}
+                                <span style="color:#94a3b8; font-size:0.8em; margin-left:10px;">${e.time ? new Date(e.time * 1000).toLocaleString() : ''}</span>
+                            </div>
+                        </div>
+                        <div style="font-size:0.85em; color:#38bdf8; margin-top:6px;">
+                            <b>Setup:</b> ${e.setup_type} ${e.comment ? `(${e.comment})` : ''}
+                        </div>
+                        <div style="font-size:0.9em; margin-top:6px; color:#cbd5e1; background:#1e293b; padding:8px; border-radius:4px;">
+                            ${e.notes}
+                        </div>
                     </div>
-                    <div style="font-size:0.9em; margin-top:6px; color:#cbd5e1;">${e.notes}</div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
         }
     } catch (err) {
         console.error(err);
