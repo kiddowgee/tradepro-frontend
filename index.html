@@ -30,6 +30,13 @@
         .status-live { background: #065f46; color: #34d399; }
         .status-wait { background: #78350f; color: #fbbf24; }
         .status-revoked { background: #7f1d1d; color: #f87171; }
+        /* Watchlist styles */
+        .quote-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-top: 10px; }
+        .quote-card { background: #0f172a; padding: 12px; border-radius: 6px; border-left: 4px solid #38bdf8; }
+        .quote-sym { font-weight: bold; font-size: 1.1em; color: #f8fafc; display: flex; justify-content: space-between; align-items: center; }
+        .quote-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 0.9em; }
+        .quote-bid { color: #f87171; font-weight: bold; }
+        .quote-ask { color: #4ade80; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -66,6 +73,14 @@
         <p style="font-size: 0.8em; color: #94a3b8; margin-top: 10px; text-align: right;">
             Auto-refreshing every 3s | Last updated: <span id="last-update">Never</span>
         </p>
+
+        <!-- Real-Time Watchlist Section -->
+        <div style="margin-top: 25px;">
+            <h2>Live Watchlist</h2>
+            <div id="watchlist-container" class="quote-grid">
+                <div style="color: #94a3b8; grid-column: 1 / -1;">Waiting for live quotes...</div>
+            </div>
+        </div>
 
         <!-- Performance Analytics Section -->
         <div style="margin-top: 25px;">
@@ -283,6 +298,9 @@
                     document.getElementById('val-broker').innerText = accountInfo.company || accountInfo.broker || '-';
                     document.getElementById('val-account').innerText = accountInfo.login || accountInfo.account_number || '-';
 
+                    // Watchlist
+                    renderWatchlist(mt5.quotes || {});
+
                     // Positions
                     const positions = mt5.positions || [];
                     document.getElementById('pos-count').innerText = positions.length;
@@ -327,6 +345,43 @@
             } catch (err) {
                 console.error(err);
             }
+        }
+
+        function renderWatchlist(quotes) {
+            const container = document.getElementById('watchlist-container');
+            const syms = Object.keys(quotes);
+            
+            if (syms.length === 0) {
+                container.innerHTML = '<div style="color: #94a3b8; grid-column: 1 / -1;">No active market quotes available</div>';
+                return;
+            }
+
+            container.innerHTML = syms.map(sym => {
+                const q = quotes[sym];
+                if (!q.live) {
+                    return `
+                        <div class="quote-card" style="border-left-color: #64748b;">
+                            <div class="quote-sym">${sym} <span style="font-size:0.7em; color:#94a3b8;">OFFLINE</span></div>
+                            <div style="font-size:0.8em; color:#94a3b8; margin-top:4px;">${q.error || 'Symbol unavailable'}</div>
+                        </div>
+                    `;
+                }
+
+                const spreadFormatted = (q.spread ?? 0).toFixed(q.digits > 3 ? 1 : 2);
+
+                return `
+                    <div class="quote-card">
+                        <div class="quote-sym">
+                            ${sym}
+                            <span style="font-size:0.7em; color:#38bdf8;">Spread: ${spreadFormatted}</span>
+                        </div>
+                        <div class="quote-row">
+                            <span>Bid: <b class="quote-bid">${q.bid}</b></span>
+                            <span>Ask: <b class="quote-ask">${q.ask}</b></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
         }
 
         function renderHistoryAndAnalytics(deals, currency) {
