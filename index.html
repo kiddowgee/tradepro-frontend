@@ -3,15 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TradePro Dashboard</title>
+    <title>TradePro - Trader Assistant</title>
     <link rel="stylesheet" href="app.css">
 </head>
 <body>
 
-    <h1>TradePro Dashboard</h1>
-
     <!-- Auth Form -->
-    <div id="auth-card" class="card">
+    <div id="auth-card" class="card" style="max-width: 500px; margin: 50px auto;">
         <h2 id="auth-title">Login</h2>
         <input type="email" id="email" placeholder="Email Address">
         <input type="password" id="password" placeholder="Password">
@@ -22,134 +20,178 @@
         <div id="auth-error" style="color: #f87171; margin-top: 10px;"></div>
     </div>
 
-    <!-- Dashboard Area -->
-    <div id="dash-card" class="card hidden">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2>Account Snapshot</h2>
-            <span id="conn-status" class="status-tag status-wait">WAITING</span>
-        </div>
-        <p>Logged in as: <b id="user-display"></b> | <a href="#" onclick="logout()" style="color: #f87171;">Logout</a></p>
+    <!-- Main App Shell -->
+    <div id="app-shell" class="hidden">
         
-        <div class="grid">
-            <div class="stat"><div>Balance</div><div class="stat-val" id="val-balance">-</div></div>
-            <div class="stat"><div>Equity</div><div class="stat-val" id="val-equity">-</div></div>
-            <div class="stat"><div>Broker</div><div id="val-broker">-</div></div>
-            <div class="stat"><div>Account #</div><div id="val-account">-</div></div>
-        </div>
+        <!-- Header & Nav Bar -->
+        <header class="app-header">
+            <div class="brand">TradePro AI</div>
+            <nav class="nav-bar">
+                <button id="tab-dashboard" class="nav-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+                <button id="tab-signals" class="nav-btn" onclick="switchTab('signals')">Trade Signals</button>
+                <button id="tab-calendar" class="nav-btn" onclick="switchTab('calendar')">Event Calendar</button>
+                <button id="tab-journal" class="nav-btn" onclick="switchTab('journal')">Trade Journal</button>
+                <button id="tab-news" class="nav-btn" onclick="switchTab('news')">News</button>
+                <button id="tab-profile" class="nav-btn" onclick="switchTab('profile')">Profile</button>
+            </nav>
+        </header>
 
-        <p style="font-size: 0.8em; color: #94a3b8; margin-top: 10px; text-align: right;">
-            Auto-refreshing every 3s | Last updated: <span id="last-update">Never</span>
-        </p>
-
-        <!-- Real-Time Watchlist Section -->
-        <div style="margin-top: 25px;">
-            <h2>Live Watchlist</h2>
-            <div id="watchlist-container" class="quote-grid">
-                <div style="color: #94a3b8; grid-column: 1 / -1;">Waiting for live quotes...</div>
+        <!-- VIEW 1: DASHBOARD -->
+        <div id="view-dashboard" class="tab-view card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Account Snapshot</h2>
+                <span id="conn-status" class="status-tag status-wait">WAITING</span>
             </div>
-        </div>
-
-        <!-- Performance Analytics Section -->
-        <div style="margin-top: 25px;">
-            <h2>Performance Analytics</h2>
+            <p>Logged in as: <b id="user-display"></b> | <a href="#" onclick="logout()" style="color: #f87171;">Logout</a></p>
+            
             <div class="grid">
-                <div class="stat"><div>Total Trades</div><div class="stat-val" id="analytics-trades">0</div></div>
-                <div class="stat"><div>Closed P/L</div><div class="stat-val" id="analytics-pl">0.00</div></div>
-                <div class="stat"><div>Win Rate</div><div class="stat-val" id="analytics-winrate">0%</div></div>
-                <div class="stat"><div>Profit Factor</div><div class="stat-val" id="analytics-pf">0.00</div></div>
+                <div class="stat"><div>Balance</div><div class="stat-val" id="val-balance">-</div></div>
+                <div class="stat"><div>Equity</div><div class="stat-val" id="val-equity">-</div></div>
+                <div class="stat"><div>Broker</div><div id="val-broker">-</div></div>
+                <div class="stat"><div>Account #</div><div id="val-account">-</div></div>
+            </div>
+
+            <p style="font-size: 0.8em; color: #94a3b8; margin-top: 10px; text-align: right;">
+                Auto-refreshing every 3s | Last updated: <span id="last-update">Never</span>
+            </p>
+
+            <div style="margin-top: 25px;">
+                <h2>Live Watchlist</h2>
+                <div id="watchlist-container" class="quote-grid">
+                    <div style="color: #94a3b8; grid-column: 1 / -1;">Waiting for live quotes...</div>
+                </div>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <h2>Performance Analytics</h2>
+                <div class="grid">
+                    <div class="stat"><div>Total Trades</div><div class="stat-val" id="analytics-trades">0</div></div>
+                    <div class="stat"><div>Closed P/L</div><div class="stat-val" id="analytics-pl">0.00</div></div>
+                    <div class="stat"><div>Win Rate</div><div class="stat-val" id="analytics-winrate">0%</div></div>
+                    <div class="stat"><div>Profit Factor</div><div class="stat-val" id="analytics-pf">0.00</div></div>
+                </div>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <h2>Open Positions (<span id="pos-count">0</span>)</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr><th>Ticket</th><th>Symbol</th><th>Type</th><th>Volume</th><th>Open Price</th><th>Profit</th></tr>
+                        </thead>
+                        <tbody id="pos-table-body">
+                            <tr><td colspan="6" style="text-align:center; color:#94a3b8;">No open positions</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <h2>Pending Orders (<span id="orders-count">0</span>)</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr><th>Ticket</th><th>Symbol</th><th>Type</th><th>Volume</th><th>Order Price</th></tr>
+                        </thead>
+                        <tbody id="orders-table-body">
+                            <tr><td colspan="5" style="text-align:center; color:#94a3b8;">No pending orders</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div style="margin-top: 25px;">
+                <h2>Closed Deal History (<span id="history-count">0</span>)</h2>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr><th>Ticket</th><th>Symbol</th><th>Type</th><th>Volume</th><th>Price</th><th>Time</th><th>Profit</th></tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr><td colspan="7" style="text-align:center; color:#94a3b8;">No closed deals</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <!-- Open Positions Section -->
-        <div style="margin-top: 25px;">
-            <h2>Open Positions (<span id="pos-count">0</span>)</h2>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ticket</th>
-                            <th>Symbol</th>
-                            <th>Type</th>
-                            <th>Volume</th>
-                            <th>Open Price</th>
-                            <th>Profit</th>
-                        </tr>
-                    </thead>
-                    <tbody id="pos-table-body">
-                        <tr><td colspan="6" style="text-align:center; color:#94a3b8;">No open positions</td></tr>
-                    </tbody>
-                </table>
+        <!-- VIEW 2: TRADE SIGNALS -->
+        <div id="view-signals" class="tab-view card hidden">
+            <h2>AI & Strategy Trade Signals</h2>
+            <p style="color: #94a3b8; font-size: 0.9em; margin-bottom: 20px;">
+                Live trading setups evaluated using EMA trend confluence, RSI momentum, and Order Block supply/demand zones.
+            </p>
+            <div id="signals-container">
+                <div style="color: #94a3b8; text-align: center; padding: 20px;">Loading live signals...</div>
             </div>
         </div>
 
-        <!-- Pending Orders Section -->
-        <div style="margin-top: 25px;">
-            <h2>Pending Orders (<span id="orders-count">0</span>)</h2>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ticket</th>
-                            <th>Symbol</th>
-                            <th>Type</th>
-                            <th>Volume</th>
-                            <th>Order Price</th>
-                        </tr>
-                    </thead>
-                    <tbody id="orders-table-body">
-                        <tr><td colspan="5" style="text-align:center; color:#94a3b8;">No pending orders</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Trade History Section -->
-        <div style="margin-top: 25px;">
-            <h2>Closed Deal History (<span id="history-count">0</span>)</h2>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Ticket</th>
-                            <th>Symbol</th>
-                            <th>Type</th>
-                            <th>Volume</th>
-                            <th>Price</th>
-                            <th>Time</th>
-                            <th>Profit</th>
-                        </tr>
-                    </thead>
-                    <tbody id="history-table-body">
-                        <tr><td colspan="7" style="text-align:center; color:#94a3b8;">No closed deals</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <hr style="border-color: #334155; margin: 25px 0;">
-
-        <!-- Device Management Section -->
-        <h2>Registered Connectors</h2>
-        <div style="overflow-x: auto;">
+        <!-- VIEW 3: EVENT CALENDAR -->
+        <div id="view-calendar" class="tab-view card hidden">
+            <h2>Economic Event Calendar</h2>
+            <p style="color: #94a3b8; font-size: 0.9em;">High-impact news events (CPI, NFP, Interest Rate decisions) affecting tracked Forex and Commodity instruments.</p>
             <table>
                 <thead>
-                    <tr>
-                        <th>Device ID</th>
-                        <th>Created</th>
-                        <th>Last Active</th>
-                        <th>Status</th>
-                        <th>Action</th>
-                    </tr>
+                    <tr><th>Date & Time (UTC)</th><th>Currency / Pair</th><th>Event Name</th><th>Impact</th><th>Forecast</th><th>Previous</th></tr>
                 </thead>
-                <tbody id="devices-table-body">
-                    <tr><td colspan="5" style="text-align:center; color:#94a3b8;">Loading devices...</td></tr>
+                <tbody>
+                    <tr><td>Thu, Oct 8 14:30</td><td>USD (XAUUSD)</td><td>US CPI Inflation YoY</td><td><span class="status-tag status-revoked">HIGH</span></td><td>2.6%</td><td>2.5%</td></tr>
+                    <tr><td>Fri, Oct 9 12:30</td><td>USD (ALL)</td><td>Non-Farm Payrolls (NFP)</td><td><span class="status-tag status-revoked">HIGH</span></td><td>145K</td><td>142K</td></tr>
+                    <tr><td>Mon, Oct 12 09:00</td><td>EUR (EURUSD)</td><td>ECB President Speaks</td><td><span class="status-tag status-wait">MEDIUM</span></td><td>-</td><td>-</td></tr>
                 </tbody>
             </table>
         </div>
 
-        <h3 style="margin-top: 20px;">Pair New Connector</h3>
-        <button onclick="createPairingCode()">Generate 6-Digit Code</button>
-        <div id="pairing-code-display" style="margin-top: 10px; font-size: 1.2em;"></div>
+        <!-- VIEW 4: TRADE JOURNAL -->
+        <div id="view-journal" class="tab-view card hidden">
+            <h2>Trade Journal & Reflection</h2>
+            <p style="color: #94a3b8; font-size: 0.9em;">Log setup types, trade psychology, and reflections for continuous improvement.</p>
+            <div style="background: #0f172a; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+                <h3>Add Journal Reflection</h3>
+                <input type="number" id="journal-ticket" placeholder="Trade Ticket # (e.g. 152477846)">
+                <input type="text" id="journal-setup" placeholder="Setup Type (e.g. Order Block Rejection, EMA Breakout)">
+                <textarea id="journal-notes" placeholder="Notes & Mindset (e.g. Followed risk management, exited early due to news)" style="width:100%; height:80px; background:#1e293b; color:#fff; border:1px solid #475569; border-radius:4px; padding:10px; margin-top:5px; box-sizing:border-box;"></textarea>
+                <button onclick="alert('Journal entry saved successfully!')">Save Journal Entry</button>
+            </div>
+        </div>
+
+        <!-- VIEW 5: NEWS -->
+        <div id="view-news" class="tab-view card hidden">
+            <h2>Financial Market News</h2>
+            <p style="color: #94a3b8; font-size: 0.9em;">Real-time market sentiment and fundamental news updates.</p>
+            <div style="display:flex; flex-direction:column; gap:12px; margin-top:15px;">
+                <div style="background:#0f172a; padding:12px; border-radius:6px; border-left:4px solid #38bdf8;">
+                    <div style="font-weight:bold; font-size:1.05em;">Gold (XAUUSD) Holds Range Ahead of US Inflation Print</div>
+                    <div style="font-size:0.85em; color:#94a3b8; margin-top:4px;">Spot gold trades near $2,650 as market participants await key US consumer price data for Fed rate cut cues.</div>
+                </div>
+                <div style="background:#0f172a; padding:12px; border-radius:6px; border-left:4px solid #4ade80;">
+                    <div style="font-weight:bold; font-size:1.05em;">EUR/USD Finds Support Near 1.1180 Key Pivot Zone</div>
+                    <div style="font-size:0.85em; color:#94a3b8; margin-top:4px;">Euro buyers defend support zone following positive European industrial production indicators.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 6: PROFILE & SETTINGS -->
+        <div id="view-profile" class="tab-view card hidden">
+            <h2>User Profile & Risk Settings</h2>
+            <div style="margin-bottom: 20px;">
+                <h3>Registered Connectors</h3>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr><th>Device ID</th><th>Created</th><th>Last Active</th><th>Status</th><th>Action</th></tr>
+                        </thead>
+                        <tbody id="devices-table-body">
+                            <tr><td colspan="5" style="text-align:center; color:#94a3b8;">Loading devices...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <h3 style="margin-top: 20px;">Pair New Connector</h3>
+                <button onclick="createPairingCode()">Generate 6-Digit Code</button>
+                <div id="pairing-code-display" style="margin-top: 10px; font-size: 1.2em;"></div>
+            </div>
+        </div>
+
     </div>
 
     <script src="app.js"></script>
