@@ -5,12 +5,21 @@ let pollTimer = null;
 let currentTab = 'dashboard';
 let lastQuotes = {};
 let selectedSymbol = null;
-const chartHistory = Object.create(null);
-const CHART_MAX_POINTS = 120;
+const chartBars = Object.create(null);
+const CHART_MAX_BARS = 500;
+let chartTimeframe = '1m';
+let chartType = 'candles';
+let chartViewOffset = 0;
+let chartVisibleBars = 80;
+let chartPointer = null;
+let chartTooltip = null;
+let calendarImpact = 'all';
+let calendarCache = [];
 
 window.addEventListener('DOMContentLoaded', () => {
     setupNavigation();
     setupChartResize();
+    setupChartInteractions();
 
     const token = localStorage.getItem('access_token');
     const email = localStorage.getItem('user_email');
@@ -165,6 +174,8 @@ async function refreshCurrentView() {
         if (currentTab === 'dashboard') await fetchAccountData();
         else if (currentTab === 'signals') await fetchSignals();
         else if (currentTab === 'journal') await fetchJournal();
+        else if (currentTab === 'calendar') await fetchCalendar();
+        else if (currentTab === 'news') await fetchNews();
         else if (currentTab === 'profile') await Promise.all([fetchAccountData(), fetchDevices()]);
     } catch (error) {
         console.error(`Failed to refresh ${currentTab}:`, error);
@@ -266,13 +277,70 @@ function selectChartSymbol(symbol) {
     updateChartSymbols(lastQuotes);
 }
 
-function updateChartForQuote(symbol, quote) {
+function timeframeSeconds(tf) { return ({ '1m': 60, '5m': 300, '15m': 900, '1h': 3600 })[tf] || 60; }
+function timeframeLabel(tf) { return ({ '1m': '1 minute', '5m': '5 minutes', '15m': '15 minutes', '1h': '1 hour' })[tf] || tf; }
+function currentBarBucket(timestamp, tf) {
+    const seconds = timeframeSeconds(tf);
+    return Math.floor(timestamp / (seconds * 1000)) * seconds * 1000;
+}
+function setChartTimeframe(tf) {
+    if (!['1m','5m','15m','1h'].includes(tf)) return;
+    chartTimeframe = tf;
+    chartViewOffset = 0;
+    document.querySelectorAll('[data-timeframe]').forEach(b => b.classList.toggle('active', b.dataset.timeframe === tf));
+    if ($('chart-timeframe-label')) $('chart-timeframe-label').textContent = timeframeLabel(tf);
+    rebuildChartForSelection();
+}
+function setChartType(type) {
+    if (!['candles','bars','line'].includes(type)) return;
+    chartType = type;
+    document.querySelectorAll('[data-chart-type]').forEach(b => b.classList.toggle('active', b.dataset.chartType === type));
+    drawPriceChart();
+}
+function rebuildChartForSelection() {
+    if (!selectedSymbol || !lastQuotes[selectedSymbol]) { drawPriceChart(); return; }
+    const q = lastQuotes[selectedSymbol];
+    updateChartForQuote(selectedSymbol, q, true);
+}
+function loadChartBars(key) {
+    if (chartBars[key]) return chartBars[key];
+    try {
+        const raw = localStorage.getItem(`tradepro_chart_${key}`);
+        const parsed = raw ? JSON.parse(raw) : [];
+        chartBars[key] = Array.isArray(parsed) ? parsed.filter(b => Number.isFinite(Number(b.time)) && Number.isFinite(Number(b.open)) && Number.isFinite(Number(b.high)) && Number.isFinite(Number(b.low)) && Number.isFinite(Number(b.close))) : [];
+    } catch (_) { chartBars[key] = []; }
+    return chartBars[key];
+}
+function persistChartBars(key) {
+    try { localStorage.setItem(`tradepro_chart_${key}`, JSON.stringify((chartBars[key] || []).slice(-CHART_MAX_BARS))); } catch (_) {}
+}
+function appendLiveBar(symbol, quote) {
+    const bid = Number(quote.bid), ask = Number(quote.ask);
+    const price = Number.isFinite(bid) && Number.isFinite(ask) ? (bid + ask) / 2 : Number.isFinite(bid) ? bid : ask;
+    if (!Number.isFinite(price)) return false;
+    const now = Date.now();
+    const bucket = currentBarBucket(now, chartTimeframe);
+    const key = `${symbol}:${chartTimeframe}`;
+    const bars = loadChartBars(key);
+    let bar = bars[bars.length - 1];
+    if (!bar || bar.time !== bucket) {
+        bar = { time: bucket, open: price, high: price, low: price, close: price, ticks: 1 };
+        bars.push(bar);
+    } else {
+        bar.high = Math.max(bar.high, price);
+        bar.low = Math.min(bar.low, price);
+        bar.close = price;
+        bar.ticks += 1;
+    }
+    while (bars.length > CHART_MAX_BARS) bars.shift();
+    persistChartBars(key);
+    return true;
+}
+function updateChartForQuote(symbol, quote, forceRedraw = false) {
     if (!symbol || !quote) return;
-    const bid = Number(quote.bid);
-    const ask = Number(quote.ask);
+    const bid = Number(quote.bid), ask = Number(quote.ask);
     const price = Number.isFinite(bid) && Number.isFinite(ask) ? (bid + ask) / 2 : Number.isFinite(bid) ? bid : ask;
     const live = quote.live !== false && Number.isFinite(price);
-
     if (!live) {
         setChartStatus('WAITING');
         if ($('chart-price')) $('chart-price').textContent = '—';
@@ -280,102 +348,83 @@ function updateChartForQuote(symbol, quote) {
         drawPriceChart();
         return;
     }
-
-    if (!chartHistory[symbol]) chartHistory[symbol] = [];
-    const history = chartHistory[symbol];
-    const now = Date.now();
-    const last = history[history.length - 1];
-    if (!last || last.price !== price || now - last.time >= 3000) history.push({ time: now, price });
-    while (history.length > CHART_MAX_POINTS) history.shift();
-
+    if (forceRedraw) {
+        // Do not create a synthetic tick when changing timeframe/type.
+        const key = `${symbol}:${chartTimeframe}`;
+        loadChartBars(key);
+    } else {
+        appendLiveBar(symbol, quote);
+    }
     if ($('chart-symbol-title')) $('chart-symbol-title').textContent = symbol;
     if ($('chart-price')) $('chart-price').textContent = formatPrice(price, quote.digits);
-    if ($('chart-empty')) $('chart-empty').classList.toggle('hidden', history.length > 0);
+    if ($('chart-empty')) $('chart-empty').classList.toggle('hidden', (chartBars[`${symbol}:${chartTimeframe}`] || []).length > 0);
+    if ($('chart-data-status')) $('chart-data-status').textContent = `Live MT5 OHLC · ${timeframeLabel(chartTimeframe)} · read-only`;
     setChartStatus('LIVE');
     drawPriceChart();
 }
-
-function setChartStatus(status) {
-    const el = $('chart-status');
-    if (!el) return;
-    el.textContent = status;
-    el.className = `status-tag ${status === 'LIVE' ? 'status-live' : 'status-wait'}`;
-}
-
+function chartData() { return selectedSymbol ? loadChartBars(`${selectedSymbol}:${chartTimeframe}`) : []; }
 function drawPriceChart() {
-    const canvas = $('price-chart');
-    if (!canvas) return;
-    const wrap = canvas.parentElement;
-    if (!wrap) return;
+    const canvas = $('price-chart'); if (!canvas) return;
+    const wrap = canvas.parentElement; if (!wrap) return;
     const rect = wrap.getBoundingClientRect();
-    const width = Math.max(300, Math.floor(rect.width || 300));
-    const height = Math.max(220, Math.floor(rect.height || 260));
+    const width = Math.max(320, Math.floor(rect.width || 320));
+    const height = Math.max(250, Math.floor(rect.height || 300));
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.floor(width * dpr);
-    canvas.height = Math.floor(height * dpr);
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-    drawChartGrid(ctx, width, height);
-
-    const data = selectedSymbol ? (chartHistory[selectedSymbol] || []) : [];
-    if (!data.length) return;
-
-    const values = data.map(p => p.price).filter(Number.isFinite);
-    if (!values.length) return;
+    canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
+    canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+    const ctx = canvas.getContext('2d'); if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
+    const data = chartData();
+    if (!data.length) { drawChartGrid(ctx, width, height); return; }
+    const end = Math.max(1, data.length - chartViewOffset);
+    const start = Math.max(0, end - chartVisibleBars);
+    const visible = data.slice(start, end);
+    if (!visible.length) return;
+    const values = visible.flatMap(b => [b.high, b.low]).filter(Number.isFinite);
     let min = Math.min(...values), max = Math.max(...values);
     let range = max - min;
-    const center = (max + min) / 2;
-    if (!range) range = Math.max(Math.abs(center) * 0.0002, 0.00001);
-    min = center - range * 0.65;
-    max = center + range * 0.65;
-
-    const pad = { left: 14, right: 14, top: 20, bottom: 22 };
-    const plotW = width - pad.left - pad.right;
-    const plotH = height - pad.top - pad.bottom;
-    const point = (p, i) => ({
-        x: pad.left + (i / Math.max(1, data.length - 1)) * plotW,
-        y: pad.top + (1 - (p.price - min) / (max - min)) * plotH
+    if (!range) range = Math.max(Math.abs((max + min) / 2) * 0.0001, 0.00001);
+    const padY = range * 0.12; min -= padY; max += padY;
+    const pad = { left: 10, right: 70, top: 18, bottom: 28 };
+    const plotW = width - pad.left - pad.right, plotH = height - pad.top - pad.bottom;
+    drawChartGrid(ctx, width, height, pad, min, max);
+    const step = plotW / Math.max(1, visible.length);
+    const candleW = Math.max(2, Math.min(18, step * 0.68));
+    const y = p => pad.top + (1 - (p - min) / (max - min)) * plotH;
+    const x = i => pad.left + step * i + step / 2;
+    ctx.font = '10px system-ui, sans-serif';
+    visible.forEach((b, i) => {
+        const xx = x(i), yo = y(b.open), yc = y(b.close), yh = y(b.high), yl = y(b.low);
+        const up = b.close >= b.open;
+        const stroke = up ? '#0f8b61' : '#c64d55';
+        ctx.strokeStyle = stroke; ctx.fillStyle = up ? 'rgba(15,139,97,.78)' : 'rgba(198,77,85,.78)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xx, yh); ctx.lineTo(xx, yl); ctx.stroke();
+        if (chartType === 'line') return;
+        const top = Math.min(yo, yc), bodyH = Math.max(1.5, Math.abs(yc - yo));
+        if (chartType === 'candles') { ctx.fillRect(xx - candleW/2, top, candleW, bodyH); }
+        else { ctx.beginPath(); ctx.moveTo(xx - candleW/2, yo); ctx.lineTo(xx, yo); ctx.lineTo(xx, yc); ctx.lineTo(xx + candleW/2, yc); ctx.stroke(); }
     });
-    const points = data.map(point);
-
-    ctx.beginPath();
-    points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-    ctx.lineWidth = 2.5;
-    ctx.strokeStyle = '#1677ff';
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
-    ctx.stroke();
-
-    if (points.length > 1) {
-        const gradient = ctx.createLinearGradient(0, pad.top, 0, height);
-        gradient.addColorStop(0, 'rgba(22,119,255,0.20)');
-        gradient.addColorStop(1, 'rgba(22,119,255,0.00)');
-        ctx.beginPath();
-        points.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
-        ctx.lineTo(points[points.length - 1].x, height - pad.bottom);
-        ctx.lineTo(points[0].x, height - pad.bottom);
-        ctx.closePath();
-        ctx.fillStyle = gradient;
-        ctx.fill();
+    if (chartType === 'line') {
+        ctx.beginPath(); visible.forEach((b,i) => { const yy=y(b.close), xx=x(i); i ? ctx.lineTo(xx,yy) : ctx.moveTo(xx,yy); });
+        ctx.strokeStyle='#1677ff'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.stroke();
     }
-
-    const lastPoint = points[points.length - 1];
-    ctx.beginPath(); ctx.arc(lastPoint.x, lastPoint.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#1677ff'; ctx.fill();
-    ctx.beginPath(); ctx.arc(lastPoint.x, lastPoint.y, 8, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(22,119,255,0.20)'; ctx.lineWidth = 3; ctx.stroke();
+    const last = visible[visible.length-1];
+    const ly = y(last.close); ctx.strokeStyle='rgba(22,119,255,.28)'; ctx.setLineDash([4,4]); ctx.beginPath(); ctx.moveTo(pad.left,ly); ctx.lineTo(width-pad.right,ly); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='#4d5b70'; ctx.fillText(formatPrice(last.close, selectedSymbol && lastQuotes[selectedSymbol]?.digits), width-pad.right+8, ly+3);
+    if (chartTooltip && chartTooltip.index >= 0 && chartTooltip.index < visible.length) drawChartCrosshair(ctx, visible, chartTooltip.index, x, y, pad, width, height);
 }
-
-function drawChartGrid(ctx, width, height) {
-    ctx.strokeStyle = 'rgba(110,125,150,0.12)';
-    ctx.lineWidth = 1;
-    for (let i = 1; i < 5; i++) {
-        const y = height * i / 5;
-        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-    }
+function drawChartGrid(ctx, width, height, pad={left:10,right:70,top:18,bottom:28}, min=0, max=1) {
+    ctx.strokeStyle='rgba(110,125,150,.11)'; ctx.lineWidth=1; ctx.fillStyle='#7a8597'; ctx.font='10px system-ui, sans-serif';
+    for(let i=0;i<=5;i++){ const yy=pad.top+(i/5)*(height-pad.top-pad.bottom); ctx.beginPath(); ctx.moveTo(pad.left,yy); ctx.lineTo(width-pad.right,yy); ctx.stroke(); const value=max-(i/5)*(max-min); ctx.fillText(formatPrice(value, selectedSymbol && lastQuotes[selectedSymbol]?.digits), width-pad.right+8, yy+3); }
+}
+function drawChartCrosshair(ctx, visible, index, x, y, pad, width, height) {
+    const b=visible[index], xx=x(index), yy=y(b.close);
+    ctx.strokeStyle='rgba(22,119,255,.45)'; ctx.setLineDash([3,3]); ctx.beginPath(); ctx.moveTo(xx,pad.top); ctx.lineTo(xx,height-pad.bottom); ctx.stroke(); ctx.setLineDash([]);
+    const boxW=180, boxH=74, bx=Math.min(width-boxW-10,Math.max(10,xx+12)), by=Math.min(height-boxH-10,Math.max(10,yy-52));
+    ctx.fillStyle='rgba(255,255,255,.96)'; ctx.strokeStyle='rgba(110,125,150,.18)'; ctx.beginPath(); ctx.roundRect(bx,by,boxW,boxH,10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#526075'; ctx.font='10px system-ui, sans-serif';
+    const digits=selectedSymbol && lastQuotes[selectedSymbol]?.digits;
+    ctx.fillText(new Date(b.time).toLocaleString(),bx+10,by+16); ctx.fillText(`O ${formatPrice(b.open,digits)}   H ${formatPrice(b.high,digits)}`,bx+10,by+34); ctx.fillText(`L ${formatPrice(b.low,digits)}   C ${formatPrice(b.close,digits)}`,bx+10,by+51); ctx.fillText(`${b.ticks} live ticks`,bx+10,by+67);
 }
 
 function renderPositions(positions) {
@@ -482,6 +531,57 @@ async function fetchJournal() {
     } catch (error) { console.error('Journal refresh failed:', error); showPageError('journal', error.message); }
 }
 
+
+async function fetchCalendar() {
+    const container = $('calendar-container'); if (!container) return;
+    setFeedStatus('calendar', 'LOADING');
+    try {
+        const data = await apiFetch('/v1/calendar');
+        const raw = data.events ?? data.calendar ?? data.data ?? [];
+        calendarCache = Array.isArray(raw) ? raw : Object.values(raw || {});
+        renderCalendar();
+        if ($('calendar-updated')) $('calendar-updated').textContent = `Updated ${new Date().toLocaleTimeString()}`;
+        setFeedStatus('calendar', 'LIVE');
+    } catch (error) {
+        console.error('Calendar refresh failed:', error);
+        container.innerHTML = `<div class="empty-state error-state">Unable to load economic events.<small>${safe(error.message)}</small></div>`;
+        setFeedStatus('calendar', 'ERROR');
+    }
+}
+function setCalendarImpact(impact) {
+    calendarImpact = impact;
+    document.querySelectorAll('[data-impact]').forEach(b => b.classList.toggle('active', b.dataset.impact === impact));
+    renderCalendar();
+}
+function renderCalendar() {
+    const container=$('calendar-container'); if(!container) return;
+    const rows=calendarCache.filter(e => calendarImpact==='all' || String(e.impact ?? e.importance ?? '').toLowerCase().includes(calendarImpact));
+    if(!rows.length){container.innerHTML='<div class="empty-state">No events match the selected impact level.</div>';return;}
+    rows.sort((a,b)=>new Date(a.time??a.datetime??a.date).getTime()-new Date(b.time??b.datetime??b.date).getTime());
+    container.innerHTML=rows.map(e=>{
+        const impact=String(e.impact??e.importance??'Unknown');
+        const time=formatTime(e.time??e.datetime??e.date);
+        return `<article class="calendar-row"><div class="calendar-time"><strong>${safe(time)}</strong><span>${safe(e.timezone??'Local source time')}</span></div><div class="calendar-event"><div class="calendar-event-top"><strong>${safe(e.event??e.title??'Economic event')}</strong><span class="impact impact-${safe(impact.toLowerCase())}">${safe(impact)}</span></div><div class="calendar-meta"><span>${safe(e.currency??e.country??'—')}</span><span>Previous: ${safe(e.previous??'—')}</span><span>Forecast: ${safe(e.forecast??e.consensus??'—')}</span><span>Actual: ${safe(e.actual??'—')}</span></div></div></article>`;
+    }).join('');
+}
+async function fetchNews() {
+    const container=$('news-container'); if(!container) return;
+    setFeedStatus('news','LOADING');
+    try{
+        const data=await apiFetch('/v1/news');
+        const raw=data.articles??data.news??data.data??[];
+        const articles=Array.isArray(raw)?raw:Object.values(raw||{});
+        if(!articles.length){container.innerHTML='<div class="empty-state">No current news is available.</div>';setFeedStatus('news','EMPTY');return;}
+        container.innerHTML=articles.map(a=>{
+            const href=a.url??a.link??'#';
+            return `<article class="news-item"><div class="news-item-main"><div class="news-item-meta"><span>${safe(a.source??'News')}</span><span>${safe(formatTime(a.published_at??a.published??a.time))}</span></div><h2>${safe(a.title??'Untitled')}</h2>${a.summary?`<p>${safe(a.summary)}</p>`:''}</div>${href && href!=='#'?`<a class="news-open" href="${safe(href)}" target="_blank" rel="noopener noreferrer">Open source</a>`:''}</article>`;
+        }).join('');
+        if($('news-updated')) $('news-updated').textContent=`Updated ${new Date().toLocaleTimeString()}`;
+        setFeedStatus('news','LIVE');
+    }catch(error){console.error('News refresh failed:',error);container.innerHTML=`<div class="empty-state error-state">Unable to load financial news.<small>${safe(error.message)}</small></div>`;setFeedStatus('news','ERROR');}
+}
+function setFeedStatus(feed,status){const el=$(feed==='calendar'?'calendar-status':'news-status');if(!el)return;el.textContent=status;el.className=`status-tag ${status==='LIVE'?'status-live':'status-wait'}`;}
+
 async function fetchDevices() {
     const body = $('devices-table-body'); if (!body) return;
     try {
@@ -533,6 +633,27 @@ function closeMobileMenu() {
     menuToggle.setAttribute('aria-expanded', 'false');
     menuToggle.setAttribute('aria-label', 'Open navigation menu');
 }
+
+
+function setupChartInteractions() {
+    const canvas=$('price-chart'); if(!canvas)return;
+    canvas.addEventListener('pointerdown',e=>{canvas.setPointerCapture(e.pointerId);chartPointer={x:e.clientX,lastX:e.clientX};});
+    canvas.addEventListener('pointermove',e=>{
+        const rect=canvas.getBoundingClientRect(); const data=chartData();
+        if(data.length){
+            const end=Math.max(1,data.length-chartViewOffset),start=Math.max(0,end-chartVisibleBars),visible=data.slice(start,end);
+            const step=(rect.width-80)/Math.max(1,visible.length); const idx=Math.max(0,Math.min(visible.length-1,Math.floor((e.clientX-10)/step)));
+            chartTooltip={index:idx};
+        }
+        if(chartPointer){const dx=e.clientX-chartPointer.lastX;if(Math.abs(dx)>=4){chartViewOffset=Math.max(0,Math.min(Math.max(0,data.length-chartVisibleBars),chartViewOffset+Math.round(-dx/7)));chartPointer.lastX=e.clientX;}}
+        drawPriceChart();
+    });
+    canvas.addEventListener('pointerup',e=>{chartPointer=null;try{canvas.releasePointerCapture(e.pointerId)}catch(_){} });
+    canvas.addEventListener('pointerleave',()=>{chartTooltip=null;drawPriceChart();});
+    canvas.addEventListener('wheel',e=>{e.preventDefault();const data=chartData();if(!data.length)return;chartVisibleBars=Math.max(20,Math.min(220,chartVisibleBars+(e.deltaY>0?10:-10)));chartViewOffset=Math.min(chartViewOffset,Math.max(0,data.length-chartVisibleBars));drawPriceChart();},{passive:false});
+    canvas.addEventListener('dblclick',resetChartView);
+}
+function resetChartView(){chartViewOffset=0;chartVisibleBars=80;chartTooltip=null;drawPriceChart();}
 
 function setupChartResize() {
     if ('ResizeObserver' in window) {

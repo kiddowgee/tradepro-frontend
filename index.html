@@ -109,9 +109,26 @@
                 <span id="chart-price" class="chart-price">—</span>
               </div>
             </div>
-            <div class="chart-toolbar">
+            <div class="chart-toolbar chart-toolbar-main">
               <div id="chart-symbols" class="symbol-pills"></div>
-              <div class="chart-note">Live Bid/Ask history · read-only</div>
+              <div class="chart-controls">
+                <div class="chart-control-group" aria-label="Timeframe">
+                  <button type="button" class="chart-control active" data-timeframe="1m" onclick="setChartTimeframe('1m')">1m</button>
+                  <button type="button" class="chart-control" data-timeframe="5m" onclick="setChartTimeframe('5m')">5m</button>
+                  <button type="button" class="chart-control" data-timeframe="15m" onclick="setChartTimeframe('15m')">15m</button>
+                  <button type="button" class="chart-control" data-timeframe="1h" onclick="setChartTimeframe('1h')">1h</button>
+                </div>
+                <div class="chart-control-group" aria-label="Chart type">
+                  <button type="button" class="chart-control active" data-chart-type="candles" onclick="setChartType('candles')">Candles</button>
+                  <button type="button" class="chart-control" data-chart-type="bars" onclick="setChartType('bars')">Bars</button>
+                  <button type="button" class="chart-control" data-chart-type="line" onclick="setChartType('line')">Line</button>
+                </div>
+                <button type="button" class="chart-reset" onclick="resetChartView()">Reset</button>
+              </div>
+            </div>
+            <div class="chart-subtoolbar">
+              <span id="chart-timeframe-label">1 minute</span>
+              <span id="chart-data-status">Building OHLC from live MT5 ticks · read-only</span>
             </div>
             <div class="chart-wrap">
               <canvas id="price-chart" aria-label="Live price chart"></canvas>
@@ -195,14 +212,20 @@
       <!-- CALENDAR -->
       <section id="view-calendar" class="tab-view hidden">
         <div class="page-heading">
-          <div><span class="eyebrow">FUNDAMENTALS</span><h1>Event calendar</h1><p>Scheduled economic events relevant to tracked instruments.</p></div>
-          <span class="info-pill">UTC</span>
+          <div><span class="eyebrow">FUNDAMENTALS</span><h1>Economic calendar</h1><p>Scheduled events from the connected read-only market-data feed.</p></div>
+          <div class="heading-actions"><span id="calendar-status" class="status-tag status-wait">LOADING</span><button class="ghost-btn" onclick="fetchCalendar()">Refresh</button></div>
         </div>
-        <section class="glass unavailable-card">
-          <span class="eyebrow">DATA SOURCE</span>
-          <h2>Economic calendar is not connected</h2>
-          <p class="muted">This page no longer shows hard-coded events as if they were live. A calendar API can be added later without affecting the MT5 account and read-only monitoring features.</p>
-          <span class="status-tag status-wait">AWAITING DATA SOURCE</span>
+        <section class="glass calendar-panel">
+          <div class="calendar-toolbar">
+            <div class="calendar-filters">
+              <button class="chart-control active" data-impact="all" onclick="setCalendarImpact('all')">All</button>
+              <button class="chart-control" data-impact="high" onclick="setCalendarImpact('high')">High</button>
+              <button class="chart-control" data-impact="medium" onclick="setCalendarImpact('medium')">Medium</button>
+              <button class="chart-control" data-impact="low" onclick="setCalendarImpact('low')">Low</button>
+            </div>
+            <span id="calendar-updated" class="muted">—</span>
+          </div>
+          <div id="calendar-container" class="calendar-list"><div class="empty-state">Loading economic events…</div></div>
         </section>
       </section>
 
@@ -233,14 +256,12 @@
       <!-- NEWS -->
       <section id="view-news" class="tab-view hidden">
         <div class="page-heading">
-          <div><span class="eyebrow">MARKET CONTEXT</span><h1>Financial news</h1><p>Market context for instruments currently monitored by the app.</p></div>
-          <span class="info-pill">Read-only</span>
+          <div><span class="eyebrow">MARKET CONTEXT</span><h1>Financial news</h1><p>Read-only headlines from the connected news feed.</p></div>
+          <div class="heading-actions"><span id="news-status" class="status-tag status-wait">LOADING</span><button class="ghost-btn" onclick="fetchNews()">Refresh</button></div>
         </div>
-        <section class="glass unavailable-card">
-          <span class="eyebrow">DATA SOURCE</span>
-          <h2>Live financial news is not connected</h2>
-          <p class="muted">The app will not display fabricated or stale headlines as live market news. The rest of the application remains focused on connected MT5 data and read-only analysis.</p>
-          <span class="status-tag status-wait">AWAITING DATA SOURCE</span>
+        <section class="glass news-panel">
+          <div class="news-toolbar"><span id="news-updated" class="muted">—</span><span class="info-pill">Read-only</span></div>
+          <div id="news-container" class="news-feed"><div class="empty-state">Loading financial news…</div></div>
         </section>
       </section>
 
