@@ -49,6 +49,8 @@ function refreshCurrentView() {
         fetchAccountData();
     } else if (currentTab === 'signals') {
         fetchSignals();
+    } else if (currentTab === 'journal') {
+        fetchJournal();
     } else if (currentTab === 'profile') {
         fetchDevices();
     }
@@ -210,6 +212,72 @@ async function fetchSignals() {
                     <div style="font-size:0.85em; color:#94a3b8; margin-top:10px; background:#0f172a; padding:8px; border-radius:4px;">
                         <b>Confluence Reason:</b> ${s.confluence}
                     </div>
+                </div>
+            `).join('');
+        }
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function saveJournalEntry() {
+    const ticket = document.getElementById('journal-ticket').value;
+    const setup = document.getElementById('journal-setup').value;
+    const notes = document.getElementById('journal-notes').value;
+    const token = localStorage.getItem('access_token');
+
+    if (!ticket || !notes) {
+        alert('Please enter a ticket number and notes.');
+        return;
+    }
+
+    try {
+        const res = await fetch(API_URL + '/v1/journal/save', {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token 
+            },
+            body: JSON.stringify({ ticket: parseInt(ticket), setup_type: setup, notes: notes })
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+            alert('Journal entry saved to cloud database!');
+            document.getElementById('journal-ticket').value = '';
+            document.getElementById('journal-setup').value = '';
+            document.getElementById('journal-notes').value = '';
+            fetchJournal();
+        } else {
+            alert(data.error || 'Failed to save journal');
+        }
+    } catch (err) {
+        alert('Error saving journal');
+    }
+}
+
+async function fetchJournal() {
+    const token = localStorage.getItem('access_token');
+    if (!token) return;
+
+    try {
+        const res = await fetch(API_URL + '/v1/journal', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await res.json();
+        if (res.ok && data.ok) {
+            const container = document.getElementById('journal-list-container');
+            const entries = data.journal || [];
+            if (entries.length === 0) {
+                container.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:15px;">No saved trade reflections yet. Enter a ticket and reflection above to save to your cloud database.</div>';
+                return;
+            }
+            container.innerHTML = entries.map(e => `
+                <div style="background:#0f172a; padding:12px; border-radius:6px; margin-bottom:10px; border-left:4px solid #0284c7;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.9em;">
+                        <b>Ticket #${e.ticket} | ${e.setup_type || 'General Setup'}</b>
+                        <span style="color:#94a3b8;">${new Date(e.updated_at * 1000).toLocaleString()}</span>
+                    </div>
+                    <div style="font-size:0.9em; margin-top:6px; color:#cbd5e1;">${e.notes}</div>
                 </div>
             `).join('');
         }
