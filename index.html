@@ -4,174 +4,1440 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TradePro Dashboard</title>
+
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 30px auto; padding: 0 20px; line-height: 1.5; background: #0f172a; color: #f8fafc; }
-        .card { background: #1e293b; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
-        h1, h2 { margin-top: 0; color: #38bdf8; }
-        input, button { padding: 10px; margin: 5px 0; border-radius: 4px; border: 1px solid #475569; background: #0f172a; color: #fff; width: 100%; box-sizing: border-box; }
-        button { background: #0284c7; font-weight: bold; cursor: pointer; border: none; margin-top: 10px; }
-        button:hover { background: #0369a1; }
-        .hidden { display: none; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .stat { background: #0f172a; padding: 10px; border-radius: 4px; text-align: center; }
-        .stat-val { font-size: 1.4em; font-weight: bold; color: #4ade80; }
-        code { background: #0f172a; padding: 2px 6px; border-radius: 4px; color: #f43f5e; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 1000px;
+            margin: 30px auto;
+            padding: 0 20px;
+            line-height: 1.5;
+            background: #0f172a;
+            color: #f8fafc;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+        }
+
+        h1, h2 {
+            margin-top: 0;
+            color: #38bdf8;
+        }
+
+        input, button {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+            border: 1px solid #475569;
+            background: #0f172a;
+            color: #fff;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #0284c7;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: #0369a1;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .stat {
+            background: #0f172a;
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: #4ade80;
+        }
+
+        code {
+            background: #0f172a;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #f43f5e;
+        }
+
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            background: #0f172a;
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+        }
+
+        .status {
+            font-weight: bold;
+        }
+
+        .status.live {
+            color: #4ade80;
+        }
+
+        .status.updating {
+            color: #38bdf8;
+        }
+
+        .status.offline {
+            color: #f87171;
+        }
+
+        .status.waiting {
+            color: #facc15;
+        }
+
+        .section-empty {
+            background: #0f172a;
+            padding: 15px;
+            border-radius: 6px;
+            color: #94a3b8;
+            text-align: center;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9em;
+        }
+
+        th, td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #334155;
+            text-align: left;
+            white-space: nowrap;
+        }
+
+        th {
+            color: #38bdf8;
+            background: #0f172a;
+        }
+
+        .positive {
+            color: #4ade80;
+        }
+
+        .negative {
+            color: #f87171;
+        }
+
+        .neutral {
+            color: #94a3b8;
+        }
+
+        .small {
+            font-size: 0.85em;
+            color: #94a3b8;
+        }
+
+        .error-text {
+            color: #f87171;
+        }
+
+        @media (max-width: 650px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            body {
+                margin: 15px auto;
+                padding: 0 10px;
+            }
+        }
     </style>
 </head>
+
 <body>
 
     <h1>TradePro Dashboard</h1>
 
-    <!-- Auth Form -->
+    <!-- AUTH -->
     <div id="auth-card" class="card">
+
         <h2 id="auth-title">Login</h2>
-        <input type="email" id="email" placeholder="Email Address">
-        <input type="password" id="password" placeholder="Password">
+
+        <input
+            type="email"
+            id="email"
+            placeholder="Email Address"
+            autocomplete="email"
+        >
+
+        <input
+            type="password"
+            id="password"
+            placeholder="Password"
+            autocomplete="current-password"
+        >
+
         <button id="auth-btn" onclick="handleAuth()">Login</button>
+
         <p style="text-align: center;">
-            <a href="#" onclick="toggleAuthMode(); return false;" id="auth-toggle" style="color: #38bdf8;">Need an account? Register</a>
+            <a
+                href="#"
+                onclick="toggleAuthMode(); return false;"
+                id="auth-toggle"
+                style="color: #38bdf8;"
+            >
+                Need an account? Register
+            </a>
         </p>
-        <div id="auth-error" style="color: #f87171; margin-top: 10px;"></div>
+
+        <div id="auth-error" class="error-text"></div>
     </div>
 
-    <!-- Dashboard Area -->
+
+    <!-- DASHBOARD -->
     <div id="dash-card" class="card hidden">
+
         <h2>Account Snapshot</h2>
-        <p>Logged in as: <b id="user-display"></b> | <a href="#" onclick="logout()" style="color: #f87171;">Logout</a></p>
-        
-        <div class="grid">
-            <div class="stat"><div>Balance</div><div class="stat-val" id="val-balance">-</div></div>
-            <div class="stat"><div>Equity</div><div class="stat-val" id="val-equity">-</div></div>
-            <div class="stat"><div>Broker</div><div id="val-broker">-</div></div>
-            <div class="stat"><div>Account #</div><div id="val-account">-</div></div>
+
+        <p>
+            Logged in as:
+            <b id="user-display"></b>
+            |
+            <a
+                href="#"
+                onclick="logout(); return false;"
+                style="color: #f87171;"
+            >
+                Logout
+            </a>
+        </p>
+
+        <!-- LIVE STATUS -->
+        <div class="status-bar">
+
+            <div>
+                Connection:
+                <span id="connection-status" class="status waiting">
+                    WAITING
+                </span>
+            </div>
+
+            <div>
+                Last updated:
+                <span id="last-updated">Never</span>
+            </div>
+
         </div>
 
-        <button onclick="fetchAccountData()" style="margin-top: 15px;">Refresh Data</button>
 
-        <hr style="border-color: #334155; margin: 20px 0;">
+        <!-- ACCOUNT VALUES -->
+        <div class="grid">
+
+            <div class="stat">
+                <div>Balance</div>
+                <div class="stat-val" id="val-balance">-</div>
+            </div>
+
+            <div class="stat">
+                <div>Equity</div>
+                <div class="stat-val" id="val-equity">-</div>
+            </div>
+
+            <div class="stat">
+                <div>Broker</div>
+                <div id="val-broker">-</div>
+            </div>
+
+            <div class="stat">
+                <div>Account #</div>
+                <div id="val-account">-</div>
+            </div>
+
+        </div>
+
+
+        <button onclick="fetchAccountData(true)">
+            Refresh Data
+        </button>
+
+
+        <!-- OPEN POSITIONS -->
+        <hr style="border-color: #334155; margin: 25px 0;">
+
+        <h2>Open Positions</h2>
+
+        <div id="positions-container">
+            <div class="section-empty">
+                No position data loaded yet.
+            </div>
+        </div>
+
+
+        <!-- PENDING ORDERS -->
+        <hr style="border-color: #334155; margin: 25px 0;">
+
+        <h2>Pending Orders</h2>
+
+        <div id="orders-container">
+            <div class="section-empty">
+                No order data loaded yet.
+            </div>
+        </div>
+
+
+        <!-- DEAL HISTORY -->
+        <hr style="border-color: #334155; margin: 25px 0;">
+
+        <h2>Recent Deal History</h2>
+
+        <div id="history-container">
+            <div class="section-empty">
+                No deal history loaded yet.
+            </div>
+        </div>
+
+
+        <!-- PAIRING -->
+        <hr style="border-color: #334155; margin: 25px 0;">
 
         <h2>Pair New Connector</h2>
-        <button onclick="createPairingCode()">Generate 6-Digit Code</button>
-        <div id="pairing-code-display" style="margin-top: 10px; font-size: 1.2em;"></div>
+
+        <button onclick="createPairingCode()">
+            Generate 6-Digit Code
+        </button>
+
+        <div
+            id="pairing-code-display"
+            style="margin-top: 10px; font-size: 1.2em;"
+        ></div>
+
     </div>
 
-    <script>
-        const API_URL = 'https://api.tradeassist.online';
-        let isRegister = false;
 
-        window.addEventListener('DOMContentLoaded', () => {
-            const token = localStorage.getItem('access_token');
-            const savedEmail = localStorage.getItem('user_email');
-            if (token) {
-                showDashboard(savedEmail || 'User');
+<script>
+
+    const API_URL = 'https://api.tradeassist.online';
+
+    const POLL_INTERVAL = 5000;
+
+    let isRegister = false;
+    let pollingTimer = null;
+    let fetchInProgress = false;
+
+
+    /*
+     * PAGE INITIALISATION
+     */
+
+    window.addEventListener('DOMContentLoaded', () => {
+
+        const token = localStorage.getItem('access_token');
+        const savedEmail = localStorage.getItem('user_email');
+
+        if (token) {
+            showDashboard(savedEmail || 'User');
+        }
+
+    });
+
+
+    /*
+     * AUTH MODE
+     */
+
+    function toggleAuthMode() {
+
+        isRegister = !isRegister;
+
+        document.getElementById('auth-title').innerText =
+            isRegister ? 'Register' : 'Login';
+
+        document.getElementById('auth-btn').innerText =
+            isRegister ? 'Register' : 'Login';
+
+        document.getElementById('auth-toggle').innerText =
+            isRegister
+                ? 'Have an account? Login'
+                : 'Need an account? Register';
+
+        document.getElementById('auth-error').innerText = '';
+
+    }
+
+
+    /*
+     * SHOW DASHBOARD
+     */
+
+    function showDashboard(email) {
+
+        document.getElementById('auth-card')
+            .classList.add('hidden');
+
+        document.getElementById('dash-card')
+            .classList.remove('hidden');
+
+        document.getElementById('user-display')
+            .innerText = email;
+
+        setConnectionStatus('waiting');
+
+        /*
+         * Initial request immediately.
+         */
+        fetchAccountData(true);
+
+        /*
+         * Start automatic polling.
+         */
+        startPolling();
+
+    }
+
+
+    /*
+     * AUTOMATIC POLLING
+     */
+
+    function startPolling() {
+
+        stopPolling();
+
+        pollingTimer = setInterval(() => {
+
+            if (!localStorage.getItem('access_token')) {
+                stopPolling();
+                return;
             }
-        });
 
-        function toggleAuthMode() {
-            isRegister = !isRegister;
-            document.getElementById('auth-title').innerText = isRegister ? 'Register' : 'Login';
-            document.getElementById('auth-btn').innerText = isRegister ? 'Register' : 'Login';
-            document.getElementById('auth-toggle').innerText = isRegister ? 'Have an account? Login' : 'Need an account? Register';
-            document.getElementById('auth-error').innerText = '';
+            fetchAccountData(false);
+
+        }, POLL_INTERVAL);
+
+    }
+
+
+    function stopPolling() {
+
+        if (pollingTimer !== null) {
+
+            clearInterval(pollingTimer);
+            pollingTimer = null;
+
         }
 
-        function showDashboard(email) {
-            document.getElementById('auth-card').classList.add('hidden');
-            document.getElementById('dash-card').classList.remove('hidden');
-            document.getElementById('user-display').innerText = email;
-            fetchAccountData();
+    }
+
+
+    /*
+     * CONNECTION STATUS
+     */
+
+    function setConnectionStatus(state) {
+
+        const element =
+            document.getElementById('connection-status');
+
+        element.className = 'status';
+
+        if (state === 'live') {
+
+            element.classList.add('live');
+            element.innerText = 'LIVE';
+
+        } else if (state === 'updating') {
+
+            element.classList.add('updating');
+            element.innerText = 'UPDATING';
+
+        } else if (state === 'offline') {
+
+            element.classList.add('offline');
+            element.innerText = 'OFFLINE';
+
+        } else {
+
+            element.classList.add('waiting');
+            element.innerText = 'WAITING';
+
         }
 
-        async function handleAuth() {
-            document.getElementById('auth-error').innerText = '';
-            const e = document.getElementById('email').value.trim();
-            const p = document.getElementById('password').value;
-            const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
+    }
 
-            try {
-                const res = await fetch(API_URL + endpoint, {
+
+    /*
+     * AUTHENTICATION
+     */
+
+    async function handleAuth() {
+
+        document.getElementById('auth-error').innerText = '';
+
+        const email =
+            document.getElementById('email').value.trim();
+
+        const password =
+            document.getElementById('password').value;
+
+        const endpoint =
+            isRegister
+                ? '/v1/auth/register'
+                : '/v1/auth/login';
+
+
+        try {
+
+            const res = await fetch(
+                API_URL + endpoint,
+                {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email: e, password: p })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Authentication failed');
 
-                if (isRegister) {
-                    alert('Registration successful! Please login.');
-                    toggleAuthMode();
-                } else {
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('user_email', e);
-                    showDashboard(e);
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+
+                    body: JSON.stringify({
+                        email: email,
+                        password: password
+                    })
                 }
-            } catch (err) {
-                document.getElementById('auth-error').innerText = err.message;
+            );
+
+
+            const data = await res.json();
+
+
+            if (!res.ok) {
+                throw new Error(
+                    data.error || 'Authentication failed'
+                );
             }
+
+
+            if (isRegister) {
+
+                alert(
+                    'Registration successful! Please login.'
+                );
+
+                toggleAuthMode();
+
+            } else {
+
+                localStorage.setItem(
+                    'access_token',
+                    data.access_token
+                );
+
+                localStorage.setItem(
+                    'user_email',
+                    email
+                );
+
+                showDashboard(email);
+
+            }
+
+        } catch (err) {
+
+            document.getElementById('auth-error').innerText =
+                err.message;
+
         }
 
-        async function logout() {
-            const token = localStorage.getItem('access_token');
-            if (token) {
-                await fetch(API_URL + '/v1/auth/logout', {
-                    method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-            }
-            localStorage.clear();
-            location.reload();
-        }
+    }
 
-        async function fetchAccountData() {
-            const token = localStorage.getItem('access_token');
-            if (!token) return;
+
+    /*
+     * LOGOUT
+     */
+
+    async function logout() {
+
+        stopPolling();
+
+        const token =
+            localStorage.getItem('access_token');
+
+
+        if (token) {
 
             try {
-                const res = await fetch(API_URL + '/v1/account', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                const data = await res.json();
-                if (res.ok && data.ok) {
-                    if (data.status === 'NO_DEVICE_SNAPSHOT') {
-                        document.getElementById('val-balance').innerText = 'No Device';
-                        document.getElementById('val-equity').innerText = 'No Device';
-                        document.getElementById('val-broker').innerText = 'N/A';
-                        document.getElementById('val-account').innerText = 'N/A';
-                        return;
+
+                await fetch(
+                    API_URL + '/v1/auth/logout',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Authorization':
+                                'Bearer ' + token
+                        }
                     }
+                );
 
-                    const snap = data.snapshot || {};
-                    const accountInfo = (snap.mt5 && snap.mt5.account) ? snap.mt5.account : (snap.account || snap);
-
-                    document.getElementById('val-balance').innerText = (accountInfo.balance ?? '-') + ' ' + (accountInfo.currency || '');
-                    document.getElementById('val-equity').innerText = (accountInfo.equity ?? '-') + ' ' + (accountInfo.currency || '');
-                    document.getElementById('val-broker').innerText = accountInfo.company || accountInfo.broker || '-';
-                    document.getElementById('val-account').innerText = accountInfo.login || accountInfo.account_number || '-';
-                }
             } catch (err) {
-                console.error(err);
+
+                console.error(
+                    'Logout request failed:',
+                    err
+                );
+
             }
+
         }
 
-        async function createPairingCode() {
-            const token = localStorage.getItem('access_token');
-            if (!token) return;
 
-            try {
-                const res = await fetch(API_URL + '/v1/pairing/create', {
+        localStorage.clear();
+
+        location.reload();
+
+    }
+
+
+    /*
+     * ACCOUNT DATA
+     */
+
+    async function fetchAccountData(manualRefresh = false) {
+
+        const token =
+            localStorage.getItem('access_token');
+
+        if (!token) {
+            return;
+        }
+
+
+        /*
+         * Prevent overlapping requests.
+         */
+        if (fetchInProgress) {
+            return;
+        }
+
+
+        fetchInProgress = true;
+
+        setConnectionStatus('updating');
+
+
+        try {
+
+            const res = await fetch(
+                API_URL + '/v1/account',
+                {
+                    headers: {
+                        'Authorization':
+                            'Bearer ' + token
+                    },
+
+                    cache: 'no-store'
+                }
+            );
+
+
+            /*
+             * Authentication expired.
+             */
+            if (res.status === 401) {
+
+                stopPolling();
+
+                localStorage.removeItem(
+                    'access_token'
+                );
+
+                localStorage.removeItem(
+                    'user_email'
+                );
+
+                location.reload();
+
+                return;
+            }
+
+
+            const data = await res.json();
+
+
+            if (!res.ok || !data.ok) {
+
+                throw new Error(
+                    data.error ||
+                    data.status ||
+                    'Account request failed'
+                );
+
+            }
+
+
+            /*
+             * No MT5 device snapshot.
+             */
+
+            if (data.status === 'NO_DEVICE_SNAPSHOT') {
+
+                document.getElementById(
+                    'val-balance'
+                ).innerText = 'No Device';
+
+                document.getElementById(
+                    'val-equity'
+                ).innerText = 'No Device';
+
+                document.getElementById(
+                    'val-broker'
+                ).innerText = 'N/A';
+
+                document.getElementById(
+                    'val-account'
+                ).innerText = 'N/A';
+
+
+                renderEmptyState(
+                    'positions-container',
+                    'No MT5 device snapshot available.'
+                );
+
+                renderEmptyState(
+                    'orders-container',
+                    'No MT5 device snapshot available.'
+                );
+
+                renderEmptyState(
+                    'history-container',
+                    'No MT5 device snapshot available.'
+                );
+
+
+                setConnectionStatus('waiting');
+
+                document.getElementById(
+                    'last-updated'
+                ).innerText = 'Waiting for connector';
+
+                return;
+            }
+
+
+            /*
+             * Extract MT5 snapshot.
+             */
+
+            const snap =
+                data.snapshot || {};
+
+
+            const mt5 =
+                snap.mt5 || {};
+
+
+            const accountInfo =
+                mt5.account ||
+                snap.account ||
+                snap;
+
+
+            /*
+             * Account values.
+             */
+
+            const currency =
+                accountInfo.currency || '';
+
+
+            document.getElementById(
+                'val-balance'
+            ).innerText =
+                formatNumber(accountInfo.balance) +
+                (currency ? ' ' + currency : '');
+
+
+            document.getElementById(
+                'val-equity'
+            ).innerText =
+                formatNumber(accountInfo.equity) +
+                (currency ? ' ' + currency : '');
+
+
+            document.getElementById(
+                'val-broker'
+            ).innerText =
+                accountInfo.company ||
+                accountInfo.broker ||
+                '-';
+
+
+            document.getElementById(
+                'val-account'
+            ).innerText =
+                accountInfo.login ||
+                accountInfo.account_number ||
+                '-';
+
+
+            /*
+             * Render MT5 collections.
+             */
+
+            renderPositions(
+                getCollection(
+                    mt5,
+                    snap,
+                    [
+                        'positions',
+                        'open_positions'
+                    ]
+                )
+            );
+
+
+            renderOrders(
+                getCollection(
+                    mt5,
+                    snap,
+                    [
+                        'orders',
+                        'pending_orders'
+                    ]
+                )
+            );
+
+
+            renderHistory(
+                getCollection(
+                    mt5,
+                    snap,
+                    [
+                        'history',
+                        'deals',
+                        'deal_history'
+                    ]
+                )
+            );
+
+
+            /*
+             * Successful update.
+             */
+
+            setConnectionStatus('live');
+
+            document.getElementById(
+                'last-updated'
+            ).innerText =
+                new Date().toLocaleTimeString();
+
+
+        } catch (err) {
+
+            console.error(
+                'Account polling error:',
+                err
+            );
+
+            setConnectionStatus('offline');
+
+            /*
+             * Do NOT erase existing account values.
+             * A temporary network failure should not
+             * make the dashboard appear empty.
+             */
+
+        } finally {
+
+            fetchInProgress = false;
+
+        }
+
+    }
+
+
+    /*
+     * COLLECTION HELPER
+     *
+     * This lets us accommodate the snapshot structures
+     * without changing the backend.
+     */
+
+    function getCollection(mt5, snap, possibleNames) {
+
+        for (const name of possibleNames) {
+
+            if (Array.isArray(mt5[name])) {
+                return mt5[name];
+            }
+
+            if (Array.isArray(snap[name])) {
+                return snap[name];
+            }
+
+        }
+
+        return [];
+
+    }
+
+
+    /*
+     * OPEN POSITIONS
+     */
+
+    function renderPositions(positions) {
+
+        const container =
+            document.getElementById(
+                'positions-container'
+            );
+
+
+        if (!positions || positions.length === 0) {
+
+            renderEmptyState(
+                'positions-container',
+                'No open positions.'
+            );
+
+            return;
+
+        }
+
+
+        let html = `
+            <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Side</th>
+                        <th>Volume</th>
+                        <th>Open Price</th>
+                        <th>Current Price</th>
+                        <th>SL</th>
+                        <th>TP</th>
+                        <th>P/L</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+
+        for (const position of positions) {
+
+            const symbol =
+                position.symbol ?? '-';
+
+            const side =
+                getSide(position);
+
+            const volume =
+                position.volume ??
+                position.lots ??
+                '-';
+
+            const openPrice =
+                position.open_price ??
+                position.price_open ??
+                '-';
+
+            const currentPrice =
+                position.current_price ??
+                position.price_current ??
+                '-';
+
+            const sl =
+                position.sl ??
+                position.stop_loss ??
+                '-';
+
+            const tp =
+                position.tp ??
+                position.take_profit ??
+                '-';
+
+            const profit =
+                position.profit ??
+                position.pnl ??
+                position.p_l ??
+                '-';
+
+
+            html += `
+                <tr>
+                    <td>${escapeHtml(symbol)}</td>
+                    <td>${escapeHtml(String(side))}</td>
+                    <td>${escapeHtml(String(volume))}</td>
+                    <td>${escapeHtml(String(openPrice))}</td>
+                    <td>${escapeHtml(String(currentPrice))}</td>
+                    <td>${escapeHtml(String(sl))}</td>
+                    <td>${escapeHtml(String(tp))}</td>
+                    <td class="${profitClass(profit)}">
+                        ${escapeHtml(String(profit))}
+                    </td>
+                </tr>
+            `;
+
+        }
+
+
+        html += `
+                </tbody>
+            </table>
+            </div>
+        `;
+
+
+        container.innerHTML = html;
+
+    }
+
+
+    /*
+     * PENDING ORDERS
+     */
+
+    function renderOrders(orders) {
+
+        const container =
+            document.getElementById(
+                'orders-container'
+            );
+
+
+        if (!orders || orders.length === 0) {
+
+            renderEmptyState(
+                'orders-container',
+                'No pending orders.'
+            );
+
+            return;
+
+        }
+
+
+        let html = `
+            <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Volume</th>
+                        <th>Price</th>
+                        <th>SL</th>
+                        <th>TP</th>
+                        <th>Ticket</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+
+        for (const order of orders) {
+
+            const symbol =
+                order.symbol ?? '-';
+
+            const type =
+                order.type ??
+                order.order_type ??
+                '-';
+
+            const volume =
+                order.volume ??
+                order.lots ??
+                '-';
+
+            const price =
+                order.price ??
+                order.price_open ??
+                '-';
+
+            const sl =
+                order.sl ??
+                order.stop_loss ??
+                '-';
+
+            const tp =
+                order.tp ??
+                order.take_profit ??
+                '-';
+
+            const ticket =
+                order.ticket ??
+                order.order_ticket ??
+                '-';
+
+
+            html += `
+                <tr>
+                    <td>${escapeHtml(String(symbol))}</td>
+                    <td>${escapeHtml(String(type))}</td>
+                    <td>${escapeHtml(String(volume))}</td>
+                    <td>${escapeHtml(String(price))}</td>
+                    <td>${escapeHtml(String(sl))}</td>
+                    <td>${escapeHtml(String(tp))}</td>
+                    <td>${escapeHtml(String(ticket))}</td>
+                </tr>
+            `;
+
+        }
+
+
+        html += `
+                </tbody>
+            </table>
+            </div>
+        `;
+
+
+        container.innerHTML = html;
+
+    }
+
+
+    /*
+     * DEAL HISTORY
+     */
+
+    function renderHistory(history) {
+
+        const container =
+            document.getElementById(
+                'history-container'
+            );
+
+
+        if (!history || history.length === 0) {
+
+            renderEmptyState(
+                'history-container',
+                'No deal history available.'
+            );
+
+            return;
+
+        }
+
+
+        /*
+         * Display newest entries first.
+         * Limit frontend rendering to 100.
+         */
+
+        const rows =
+            history.slice(-100).reverse();
+
+
+        let html = `
+            <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date / Time</th>
+                        <th>Symbol</th>
+                        <th>Type</th>
+                        <th>Volume</th>
+                        <th>Price</th>
+                        <th>Profit</th>
+                        <th>Commission</th>
+                        <th>Swap</th>
+                        <th>Ticket</th>
+                    </tr>
+                </thead>
+                <tbody>
+        `;
+
+
+        for (const deal of rows) {
+
+            const time =
+                deal.time ||
+                deal.datetime ||
+                deal.date ||
+                '-';
+
+            const symbol =
+                deal.symbol ??
+                '-';
+
+            const type =
+                deal.type ??
+                deal.deal_type ??
+                '-';
+
+            const volume =
+                deal.volume ??
+                deal.lots ??
+                '-';
+
+            const price =
+                deal.price ??
+                '-';
+
+            const profit =
+                deal.profit ??
+                deal.pnl ??
+                '-';
+
+            const commission =
+                deal.commission ??
+                '-';
+
+            const swap =
+                deal.swap ??
+                '-';
+
+            const ticket =
+                deal.ticket ??
+                deal.deal_ticket ??
+                '-';
+
+
+            html += `
+                <tr>
+                    <td>${escapeHtml(String(time))}</td>
+                    <td>${escapeHtml(String(symbol))}</td>
+                    <td>${escapeHtml(String(type))}</td>
+                    <td>${escapeHtml(String(volume))}</td>
+                    <td>${escapeHtml(String(price))}</td>
+                    <td class="${profitClass(profit)}">
+                        ${escapeHtml(String(profit))}
+                    </td>
+                    <td>${escapeHtml(String(commission))}</td>
+                    <td>${escapeHtml(String(swap))}</td>
+                    <td>${escapeHtml(String(ticket))}</td>
+                </tr>
+            `;
+
+        }
+
+
+        html += `
+                </tbody>
+            </table>
+            </div>
+        `;
+
+
+        container.innerHTML = html;
+
+    }
+
+
+    /*
+     * EMPTY STATE
+     */
+
+    function renderEmptyState(id, message) {
+
+        document.getElementById(id).innerHTML =
+            `<div class="section-empty">
+                ${escapeHtml(message)}
+             </div>`;
+
+    }
+
+
+    /*
+     * SIDE HELPER
+     */
+
+    function getSide(position) {
+
+        if (position.side) {
+            return position.side;
+        }
+
+        if (position.type !== undefined) {
+
+            const type =
+                String(position.type).toUpperCase();
+
+            if (
+                type.includes('BUY') ||
+                type === '0'
+            ) {
+                return 'BUY';
+            }
+
+            if (
+                type.includes('SELL') ||
+                type === '1'
+            ) {
+                return 'SELL';
+            }
+
+        }
+
+        return '-';
+
+    }
+
+
+    /*
+     * NUMBER FORMATTING
+     */
+
+    function formatNumber(value) {
+
+        if (
+            value === null ||
+            value === undefined ||
+            value === ''
+        ) {
+            return '-';
+        }
+
+        if (
+            typeof value === 'number' &&
+            Number.isFinite(value)
+        ) {
+            return value.toLocaleString(
+                undefined,
+                {
+                    maximumFractionDigits: 2
+                }
+            );
+        }
+
+        return String(value);
+
+    }
+
+
+    /*
+     * PROFIT CLASS
+     */
+
+    function profitClass(value) {
+
+        const number =
+            Number(value);
+
+        if (!Number.isFinite(number)) {
+            return 'neutral';
+        }
+
+        if (number > 0) {
+            return 'positive';
+        }
+
+        if (number < 0) {
+            return 'negative';
+        }
+
+        return 'neutral';
+
+    }
+
+
+    /*
+     * HTML SAFETY
+     */
+
+    function escapeHtml(value) {
+
+        return String(value)
+            .replaceAll('&', '&amp;')
+            .replaceAll('<', '&lt;')
+            .replaceAll('>', '&gt;')
+            .replaceAll('"', '&quot;')
+            .replaceAll("'", '&#039;');
+
+    }
+
+
+    /*
+     * PAIRING CODE
+     */
+
+    async function createPairingCode() {
+
+        const token =
+            localStorage.getItem('access_token');
+
+        if (!token) {
+            return;
+        }
+
+
+        try {
+
+            const res = await fetch(
+                API_URL + '/v1/pairing/create',
+                {
                     method: 'POST',
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                const data = await res.json();
-                if (res.ok && data.code) {
-                    document.getElementById('pairing-code-display').innerHTML = 'Pairing Code: <code>' + data.code + '</code>';
-                } else {
-                    alert(data.error || 'Failed to generate code');
+
+                    headers: {
+                        'Authorization':
+                            'Bearer ' + token
+                    }
                 }
-            } catch (err) {
-                alert('Error generating code');
+            );
+
+
+            const data =
+                await res.json();
+
+
+            if (res.ok && data.code) {
+
+                document.getElementById(
+                    'pairing-code-display'
+                ).innerHTML =
+                    'Pairing Code: <code>' +
+                    escapeHtml(data.code) +
+                    '</code>';
+
+            } else {
+
+                alert(
+                    data.error ||
+                    'Failed to generate code'
+                );
+
             }
+
+        } catch (err) {
+
+            console.error(err);
+
+            alert(
+                'Error generating code'
+            );
+
         }
-    </script>
+
+    }
+
+</script>
+
 </body>
 </html>
