@@ -586,3 +586,23 @@ th {
     }
 
 }
+
+/* TradePro logo refinement */
+
+.brand-logo {
+    background: rgba(255, 255, 255, 0.65);
+    padding: 4px;
+
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    border-radius: 12px;
+
+    box-shadow:
+        0 3px 10px rgba(31, 41, 55, 0.06);
+}
+
+.nav-btn:focus-visible,
+.menu-toggle:focus-visible,
+.brand:focus-visible {
+    outline: 3px solid rgba(65, 105, 225, 0.25);
+    outline-offset: 2px;
+}
