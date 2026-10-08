@@ -59,7 +59,6 @@
         const API_URL = 'https://api.tradeassist.online';
         let isRegister = false;
 
-        // Auto-login on reload if token exists
         window.addEventListener('DOMContentLoaded', () => {
             const token = localStorage.getItem('access_token');
             const savedEmail = localStorage.getItem('user_email');
@@ -142,7 +141,7 @@
                     }
 
                     const snap = data.snapshot || {};
-                    const accountInfo = snap.account || snap;
+                    const accountInfo = (snap.mt5 && snap.mt5.account) ? snap.mt5.account : (snap.account || snap);
 
                     document.getElementById('val-balance').innerText = (accountInfo.balance ?? '-') + ' ' + (accountInfo.currency || '');
                     document.getElementById('val-equity').innerText = (accountInfo.equity ?? '-') + ' ' + (accountInfo.currency || '');
