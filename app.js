@@ -24,12 +24,12 @@ function safe(value) {
         .replace(/'/g, '&#039;');
 }
 
-function escapeAttr(value) {
-    return safe(value);
-}
-
 function getToken() {
     return localStorage.getItem('access_token');
+}
+
+function getUserEmail() {
+    return localStorage.getItem('user_email') || '';
 }
 
 function authHeaders() {
@@ -57,8 +57,10 @@ async function apiFetch(path, options = {}) {
     if (response.status === 401) {
         localStorage.removeItem('access_token');
         localStorage.removeItem('user_email');
-        window.location.reload();
-        return null;
+
+        showLogin();
+
+        throw new Error('Your session has expired. Please sign in again.');
     }
 
     let data = null;
@@ -80,148 +82,107 @@ async function apiFetch(path, options = {}) {
     return data;
 }
 
+function formatNumber(value) {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ''
+    ) {
+        return '—';
+    }
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return safe(value);
+    }
+
+    return number.toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    });
+}
+
+function formatQuote(value, digits) {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ''
+    ) {
+        return '—';
+    }
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return safe(value);
+    }
+
+    let places = Number(digits);
+
+    if (!Number.isFinite(places)) {
+        places = 5;
+    }
+
+    places = Math.max(0, Math.min(places, 8));
+
+    return number.toLocaleString(undefined, {
+        minimumFractionDigits: places,
+        maximumFractionDigits: places
+    });
+}
+
 
 /* =========================================================
    AUTHENTICATION
 ========================================================= */
 
-function toggleAuthMode() {
-    isRegister = !isRegister;
+function showLogin() {
+    const authCard = document.getElementById('auth-card');
+    const appShell = document.getElementById('app-shell');
 
-    const title = document.getElementById('auth-title');
-    const button = document.getElementById('auth-btn');
-    const toggle = document.getElementById('auth-toggle');
-    const error = document.getElementById('auth-error');
-
-    if (title) {
-        title.textContent = isRegister ? 'Create your account' : 'Welcome back';
+    if (authCard) {
+        authCard.classList.remove('hidden');
     }
 
-    if (button) {
-        button.textContent = isRegister ? 'Create Account' : 'Sign In';
+    if (appShell) {
+        appShell.classList.add('hidden');
     }
-
-    if (toggle) {
-        toggle.textContent = isRegister
-            ? 'Already have an account? Sign in'
-            : 'Need an account? Create one';
-    }
-
-    if (error) {
-        error.textContent = '';
-        error.classList.add('hidden');
-    }
-}
-
-async function handleAuth(event) {
-    if (event) {
-        event.preventDefault();
-    }
-
-    const emailInput = document.getElementById('email');
-    const passwordInput = document.getElementById('password');
-    const button = document.getElementById('auth-btn');
-    const error = document.getElementById('auth-error');
-
-    const email = emailInput?.value.trim();
-    const password = passwordInput?.value;
-
-    if (!email || !password) {
-        showAuthError('Please enter your email and password.');
-        return;
-    }
-
-    if (button) {
-        button.disabled = true;
-        button.textContent = isRegister ? 'Creating account...' : 'Signing in...';
-    }
-
-    try {
-        const endpoint = isRegister
-            ? '/v1/auth/register'
-            : '/v1/auth/login';
-
-        const data = await apiFetch(endpoint, {
-            method: 'POST',
-            body: JSON.stringify({
-                email,
-                password
-            })
-        });
-
-        if (!data?.access_token) {
-            throw new Error('Authentication succeeded but no access token was returned.');
-        }
-
-        localStorage.setItem('access_token', data.access_token);
-        localStorage.setItem('user_email', email);
-
-        showApp();
-
-    } catch (err) {
-        showAuthError(err.message || 'Authentication failed.');
-    } finally {
-        if (button) {
-            button.disabled = false;
-            button.textContent = isRegister ? 'Create Account' : 'Sign In';
-        }
-    }
-}
-
-function showAuthError(message) {
-    const error = document.getElementById('auth-error');
-
-    if (!error) {
-        return;
-    }
-
-    error.textContent = message;
-    error.classList.remove('hidden');
-}
-
-async function logout() {
-    try {
-        await apiFetch('/v1/auth/logout', {
-            method: 'POST'
-        });
-    } catch {
-        // Continue with local logout even if the API request fails.
-    }
-
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('user_email');
 
     if (pollTimer) {
         clearInterval(pollTimer);
         pollTimer = null;
     }
-
-    window.location.reload();
 }
 
-
-/* =========================================================
-   APP DISPLAY
-========================================================= */
-
 function showApp() {
-    const authScreen = document.getElementById('auth-screen');
+    const authCard = document.getElementById('auth-card');
     const appShell = document.getElementById('app-shell');
 
-    if (authScreen) {
-        authScreen.classList.add('hidden');
+    if (authCard) {
+        authCard.classList.add('hidden');
     }
 
     if (appShell) {
         appShell.classList.remove('hidden');
     }
 
-    const email = localStorage.getItem('user_email');
+    const email = getUserEmail();
 
-    const userDisplay = document.getElementById('user-display');
+    const userDisplay =
+        document.getElementById('user-display');
+
+    const headerEmail =
+        document.getElementById('header-user-email');
 
     if (userDisplay) {
-        userDisplay.textContent = email || 'Account';
+        userDisplay.textContent =
+            email || 'Account';
+    }
+
+    if (headerEmail) {
+        headerEmail.textContent =
+            email || 'Account';
     }
 
     switchTab(currentTab);
@@ -237,6 +198,213 @@ function showApp() {
     refreshCurrentView();
 }
 
+function toggleAuthMode() {
+    isRegister = !isRegister;
+
+    const title =
+        document.getElementById('auth-title');
+
+    const eyebrow =
+        document.getElementById('auth-eyebrow');
+
+    const button =
+        document.getElementById('auth-btn');
+
+    const toggle =
+        document.getElementById('auth-toggle');
+
+    const password =
+        document.getElementById('password');
+
+    const error =
+        document.getElementById('auth-error');
+
+    if (isRegister) {
+        if (eyebrow) {
+            eyebrow.textContent = 'CREATE ACCOUNT';
+        }
+
+        if (title) {
+            title.textContent = 'Create your account';
+        }
+
+        if (button) {
+            button.textContent = 'Create Account';
+        }
+
+        if (toggle) {
+            toggle.textContent =
+                'Already have an account? Sign in';
+        }
+
+        if (password) {
+            password.autocomplete = 'new-password';
+        }
+    } else {
+        if (eyebrow) {
+            eyebrow.textContent = 'WELCOME BACK';
+        }
+
+        if (title) {
+            title.textContent = 'Login';
+        }
+
+        if (button) {
+            button.textContent = 'Login';
+        }
+
+        if (toggle) {
+            toggle.textContent =
+                'Need an account? Register';
+        }
+
+        if (password) {
+            password.autocomplete = 'current-password';
+        }
+    }
+
+    if (error) {
+        error.textContent = '';
+    }
+}
+
+function showAuthError(message) {
+    const error =
+        document.getElementById('auth-error');
+
+    if (error) {
+        error.textContent = message;
+    }
+}
+
+async function handleAuth() {
+    const emailInput =
+        document.getElementById('email');
+
+    const passwordInput =
+        document.getElementById('password');
+
+    const button =
+        document.getElementById('auth-btn');
+
+    const email =
+        emailInput?.value.trim();
+
+    const password =
+        passwordInput?.value || '';
+
+    showAuthError('');
+
+    if (!email || !password) {
+        showAuthError(
+            'Please enter your email and password.'
+        );
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+        button.textContent =
+            isRegister
+                ? 'Creating account...'
+                : 'Signing in...';
+    }
+
+    try {
+        const endpoint =
+            isRegister
+                ? '/v1/auth/register'
+                : '/v1/auth/login';
+
+        const data = await apiFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({
+                email,
+                password
+            })
+        });
+
+        const token =
+            data?.access_token ||
+            data?.token;
+
+        if (!token) {
+            throw new Error(
+                'The server did not return an access token.'
+            );
+        }
+
+        localStorage.setItem(
+            'access_token',
+            token
+        );
+
+        localStorage.setItem(
+            'user_email',
+            email
+        );
+
+        showApp();
+
+    } catch (error) {
+        console.error('Authentication error:', error);
+
+        showAuthError(
+            error.message ||
+            'Unable to sign in.'
+        );
+
+    } finally {
+        if (button) {
+            button.disabled = false;
+
+            button.textContent =
+                isRegister
+                    ? 'Create Account'
+                    : 'Login';
+        }
+    }
+}
+
+async function logout() {
+    try {
+        if (getToken()) {
+            await apiFetch('/v1/auth/logout', {
+                method: 'POST'
+            });
+        }
+    } catch (error) {
+        console.warn(
+            'Logout API request failed:',
+            error
+        );
+    }
+
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_email');
+
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+
+    showLogin();
+
+    const email =
+        document.getElementById('email');
+
+    const password =
+        document.getElementById('password');
+
+    if (email) {
+        email.value = '';
+    }
+
+    if (password) {
+        password.value = '';
+    }
+}
+
 
 /* =========================================================
    NAVIGATION
@@ -245,28 +413,39 @@ function showApp() {
 function switchTab(tabName) {
     currentTab = tabName;
 
-    document.querySelectorAll('.tab-view').forEach(view => {
-        view.classList.add('hidden');
-    });
+    document
+        .querySelectorAll('.tab-view')
+        .forEach(view => {
+            view.classList.add('hidden');
+        });
 
-    document.querySelectorAll('.nav-btn').forEach(button => {
-        button.classList.remove('active');
-    });
+    document
+        .querySelectorAll('.nav-btn')
+        .forEach(button => {
+            button.classList.remove('active');
+        });
 
-    const activeView = document.getElementById(`view-${tabName}`);
-    const activeButton = document.getElementById(`tab-${tabName}`);
+    const view =
+        document.getElementById(
+            `view-${tabName}`
+        );
 
-    if (activeView) {
-        activeView.classList.remove('hidden');
+    const button =
+        document.getElementById(
+            `tab-${tabName}`
+        );
+
+    if (view) {
+        view.classList.remove('hidden');
     }
 
-    if (activeButton) {
-        activeButton.classList.add('active');
+    if (button) {
+        button.classList.add('active');
     }
-
-    refreshCurrentView();
 
     closeMobileMenu();
+
+    refreshCurrentView();
 }
 
 async function refreshCurrentView() {
@@ -275,88 +454,135 @@ async function refreshCurrentView() {
     }
 
     try {
-        switch (currentTab) {
-            case 'dashboard':
-                await fetchAccountData();
-                break;
+        if (currentTab === 'dashboard') {
+            await fetchAccountData();
+        }
 
-            case 'signals':
-                await fetchSignals();
-                break;
+        if (currentTab === 'signals') {
+            await fetchSignals();
+        }
 
-            case 'calendar':
-                // Calendar is currently frontend-only.
-                break;
+        if (currentTab === 'journal') {
+            await fetchJournal();
+        }
 
-            case 'journal':
-                await fetchJournal();
-                break;
-
-            case 'news':
-                // News is currently frontend-only.
-                break;
-
-            case 'profile':
-                await fetchDevices();
-                break;
+        if (currentTab === 'profile') {
+            await fetchDevices();
         }
     } catch (error) {
-        console.error('Refresh error:', error);
+        console.error(
+            `Failed to refresh ${currentTab}:`,
+            error
+        );
     }
 }
 
 
 /* =========================================================
-   ACCOUNT / MT5 DATA
+   ACCOUNT DATA
 ========================================================= */
 
 async function fetchAccountData() {
-    const data = await apiFetch('/v1/account');
+    const data =
+        await apiFetch('/v1/account');
 
     if (!data) {
         return;
     }
 
-    const snapshot = data.snapshot || {};
-    const mt5 = snapshot.mt5 || {};
+    const snapshot =
+        data.snapshot || {};
 
-    const account = mt5.account || {};
-    const quotes = mt5.quotes || {};
-    const positions = mt5.positions || [];
-    const orders = mt5.orders || [];
-    const history = mt5.history?.deals || [];
+    const mt5 =
+        snapshot.mt5 || {};
+
+    const account =
+        mt5.account || {};
+
+    const quotes =
+        mt5.quotes || {};
+
+    const positions =
+        Array.isArray(mt5.positions)
+            ? mt5.positions
+            : [];
+
+    const orders =
+        Array.isArray(mt5.orders)
+            ? mt5.orders
+            : [];
+
+    const history =
+        Array.isArray(mt5.history?.deals)
+            ? mt5.history.deals
+            : [];
 
     lastQuotes = quotes;
 
     updateAccountValues(account);
+
     renderWatchlist(quotes);
+
     renderPositions(positions);
+
     renderOrders(orders);
+
     renderHistory(history);
+
     renderAnalytics(history);
 
     updateChartSymbols(quotes);
 
-    if (selectedSymbol && quotes[selectedSymbol]) {
-        updateChartForQuote(selectedSymbol, quotes[selectedSymbol]);
+    if (
+        selectedSymbol &&
+        quotes[selectedSymbol]
+    ) {
+        updateChartForQuote(
+            selectedSymbol,
+            quotes[selectedSymbol]
+        );
     }
 
-    updateConnectionStatus(snapshot, mt5);
+    updateConnectionStatus(
+        snapshot,
+        mt5
+    );
 }
 
 function updateAccountValues(account) {
-    const balance = document.getElementById('val-balance');
-    const equity = document.getElementById('val-equity');
-    const broker = document.getElementById('val-broker');
-    const accountNumber = document.getElementById('val-account');
-    const lastUpdate = document.getElementById('last-update');
+    const balance =
+        document.getElementById(
+            'val-balance'
+        );
+
+    const equity =
+        document.getElementById(
+            'val-equity'
+        );
+
+    const broker =
+        document.getElementById(
+            'val-broker'
+        );
+
+    const accountNumber =
+        document.getElementById(
+            'val-account'
+        );
+
+    const lastUpdate =
+        document.getElementById(
+            'last-update'
+        );
 
     if (balance) {
-        balance.textContent = formatNumber(account.balance);
+        balance.textContent =
+            formatNumber(account.balance);
     }
 
     if (equity) {
-        equity.textContent = formatNumber(account.equity);
+        equity.textContent =
+            formatNumber(account.equity);
     }
 
     if (broker) {
@@ -376,12 +602,18 @@ function updateAccountValues(account) {
 
     if (lastUpdate) {
         lastUpdate.textContent =
-            `Updated ${new Date().toLocaleTimeString()}`;
+            new Date().toLocaleTimeString();
     }
 }
 
-function updateConnectionStatus(snapshot, mt5) {
-    const status = document.getElementById('conn-status');
+function updateConnectionStatus(
+    snapshot,
+    mt5
+) {
+    const status =
+        document.getElementById(
+            'conn-status'
+        );
 
     if (!status) {
         return;
@@ -394,11 +626,17 @@ function updateConnectionStatus(snapshot, mt5) {
         true;
 
     if (connected) {
-        status.textContent = 'MT5 Connected';
-        status.className = 'status-pill status-success';
+        status.textContent =
+            'MT5 Connected';
+
+        status.className =
+            'status-tag status-success';
     } else {
-        status.textContent = 'MT5 Offline';
-        status.className = 'status-pill status-danger';
+        status.textContent =
+            'MT5 Offline';
+
+        status.className =
+            'status-tag status-revoked';
     }
 }
 
@@ -408,126 +646,210 @@ function updateConnectionStatus(snapshot, mt5) {
 ========================================================= */
 
 function renderWatchlist(quotes) {
-    const container = document.getElementById('watchlist-container');
+    const container =
+        document.getElementById(
+            'watchlist-container'
+        );
 
     if (!container) {
         return;
     }
 
-    const symbols = Object.keys(quotes || {});
+    const symbols =
+        Object.keys(quotes || {});
 
-    if (symbols.length === 0) {
+    if (!symbols.length) {
         container.innerHTML = `
             <div class="empty-state">
                 No active market quotes available.
             </div>
         `;
+
         return;
     }
 
-    container.innerHTML = symbols.map(symbol => {
-        const quote = quotes[symbol] || {};
+    container.innerHTML =
+        symbols.map(symbol => {
 
-        const live = quote.live !== false;
+            const quote =
+                quotes[symbol] || {};
 
-        const selected =
-            selectedSymbol === symbol
-                ? ' selected'
-                : '';
+            const live =
+                quote.live !== false;
 
-        if (!live) {
+            const selected =
+                selectedSymbol === symbol
+                    ? ' selected'
+                    : '';
+
+            if (!live) {
+                return `
+                    <button
+                        type="button"
+                        class="quote-card${selected}"
+                        data-symbol="${safe(symbol)}"
+                        onclick="selectChartSymbol('${safe(symbol)}')"
+                    >
+                        <div class="quote-card-top">
+
+                            <span class="quote-symbol">
+                                ${safe(symbol)}
+                            </span>
+
+                            <span class="quote-offline">
+                                OFFLINE
+                            </span>
+
+                        </div>
+
+                        <div class="quote-offline-text">
+                            Market data unavailable
+                        </div>
+
+                    </button>
+                `;
+            }
+
+            const bid =
+                quote.bid;
+
+            const ask =
+                quote.ask;
+
+            const spread =
+                quote.spread;
+
+            const digits =
+                Number.isFinite(
+                    Number(quote.digits)
+                )
+                    ? Number(quote.digits)
+                    : 5;
+
             return `
                 <button
                     type="button"
                     class="quote-card${selected}"
-                    data-symbol="${escapeAttr(symbol)}"
-                    onclick="selectChartSymbol('${escapeAttr(symbol)}')"
+                    data-symbol="${safe(symbol)}"
+                    onclick="selectChartSymbol('${safe(symbol)}')"
                 >
+
                     <div class="quote-card-top">
-                        <span class="quote-symbol">${safe(symbol)}</span>
-                        <span class="quote-offline">OFFLINE</span>
+
+                        <span class="quote-symbol">
+                            ${safe(symbol)}
+                        </span>
+
+                        <span class="quote-spread">
+                            Spread:
+                            ${formatQuote(
+                                spread,
+                                digits > 3 ? 1 : 2
+                            )}
+                        </span>
+
                     </div>
 
-                    <div class="quote-offline-text">
-                        Market data unavailable
+
+                    <div class="quote-prices">
+
+                        <div>
+
+                            <span class="quote-label">
+                                Bid
+                            </span>
+
+                            <strong class="quote-bid">
+                                ${formatQuote(
+                                    bid,
+                                    quote.digits
+                                )}
+                            </strong>
+
+                        </div>
+
+
+                        <div>
+
+                            <span class="quote-label">
+                                Ask
+                            </span>
+
+                            <strong class="quote-ask">
+                                ${formatQuote(
+                                    ask,
+                                    quote.digits
+                                )}
+                            </strong>
+
+                        </div>
+
                     </div>
+
                 </button>
             `;
-        }
-
-        const bid = quote.bid;
-        const ask = quote.ask;
-        const spread = quote.spread;
-
-        const digits =
-            Number(quote.digits) > 3
-                ? 1
-                : 2;
-
-        return `
-            <button
-                type="button"
-                class="quote-card${selected}"
-                data-symbol="${escapeAttr(symbol)}"
-                onclick="selectChartSymbol('${escapeAttr(symbol)}')"
-            >
-                <div class="quote-card-top">
-                    <span class="quote-symbol">${safe(symbol)}</span>
-
-                    <span class="quote-spread">
-                        Spread:
-                        ${formatQuote(spread, digits)}
-                    </span>
-                </div>
-
-                <div class="quote-prices">
-                    <div>
-                        <span class="quote-label">Bid</span>
-                        <strong class="quote-bid">
-                            ${formatQuote(bid, quote.digits)}
-                        </strong>
-                    </div>
-
-                    <div>
-                        <span class="quote-label">Ask</span>
-                        <strong class="quote-ask">
-                            ${formatQuote(ask, quote.digits)}
-                        </strong>
-                    </div>
-                </div>
-            </button>
-        `;
-    }).join('');
+        }).join('');
 }
 
 function updateChartSymbols(quotes) {
-    const container = document.getElementById('chart-symbols');
+    const container =
+        document.getElementById(
+            'chart-symbols'
+        );
+
+    const title =
+        document.getElementById(
+            'chart-symbol-title'
+        );
 
     if (!container) {
         return;
     }
 
-    const symbols = Object.keys(quotes || {});
+    const symbols =
+        Object.keys(quotes || {});
 
     if (!symbols.length) {
         container.innerHTML = '';
         selectedSymbol = null;
+
+        if (title) {
+            title.textContent =
+                'Market monitor';
+        }
+
+        setChartStatus('Waiting');
+
         return;
     }
 
-    if (!selectedSymbol || !quotes[selectedSymbol]) {
-        selectedSymbol = symbols[0];
+    if (
+        !selectedSymbol ||
+        !quotes[selectedSymbol]
+    ) {
+        selectedSymbol =
+            symbols[0];
     }
 
-    container.innerHTML = symbols.map(symbol => `
-        <button
-            type="button"
-            class="chart-symbol-btn ${symbol === selectedSymbol ? 'active' : ''}"
-            onclick="selectChartSymbol('${escapeAttr(symbol)}')"
-        >
-            ${safe(symbol)}
-        </button>
-    `).join('');
+    if (title) {
+        title.textContent =
+            selectedSymbol;
+    }
+
+    container.innerHTML =
+        symbols.map(symbol => `
+            <button
+                type="button"
+                class="symbol-pill ${
+                    symbol === selectedSymbol
+                        ? 'active'
+                        : ''
+                }"
+                onclick="selectChartSymbol('${safe(symbol)}')"
+            >
+                ${safe(symbol)}
+            </button>
+        `).join('');
 }
 
 function selectChartSymbol(symbol) {
@@ -535,18 +857,26 @@ function selectChartSymbol(symbol) {
         return;
     }
 
-    selectedSymbol = symbol;
+    selectedSymbol =
+        symbol;
 
-    updateChartSymbols(lastQuotes);
+    updateChartSymbols(
+        lastQuotes
+    );
 
-    document.querySelectorAll('.quote-card').forEach(card => {
-        card.classList.toggle(
-            'selected',
-            card.dataset.symbol === symbol
-        );
-    });
+    document
+        .querySelectorAll('.quote-card')
+        .forEach(card => {
+            card.classList.toggle(
+                'selected',
+                card.dataset.symbol === symbol
+            );
+        });
 
-    updateChartForQuote(symbol, lastQuotes[symbol]);
+    updateChartForQuote(
+        symbol,
+        lastQuotes[symbol]
+    );
 }
 
 
@@ -554,24 +884,42 @@ function selectChartSymbol(symbol) {
    LIVE PRICE CHART
 ========================================================= */
 
-function updateChartForQuote(symbol, quote) {
+function updateChartForQuote(
+    symbol,
+    quote
+) {
     if (!quote) {
         return;
     }
 
-    const bid = Number(quote.bid);
-    const ask = Number(quote.ask);
+    const bid =
+        Number(quote.bid);
 
-    if (!Number.isFinite(bid) && !Number.isFinite(ask)) {
-        setChartStatus('No live price');
+    const ask =
+        Number(quote.ask);
+
+    if (
+        !Number.isFinite(bid) &&
+        !Number.isFinite(ask)
+    ) {
+        setChartStatus(
+            'No live price'
+        );
+
         return;
     }
 
     let price;
 
-    if (Number.isFinite(bid) && Number.isFinite(ask)) {
-        price = (bid + ask) / 2;
-    } else if (Number.isFinite(bid)) {
+    if (
+        Number.isFinite(bid) &&
+        Number.isFinite(ask)
+    ) {
+        price =
+            (bid + ask) / 2;
+    } else if (
+        Number.isFinite(bid)
+    ) {
         price = bid;
     } else {
         price = ask;
@@ -581,16 +929,20 @@ function updateChartForQuote(symbol, quote) {
         chartHistory[symbol] = [];
     }
 
-    const history = chartHistory[symbol];
+    const history =
+        chartHistory[symbol];
 
-    const now = Date.now();
+    const now =
+        Date.now();
 
-    const previous = history[history.length - 1];
+    const previous =
+        history[
+            history.length - 1
+        ];
 
     if (
         !previous ||
-        previous.price !== price ||
-        now - previous.time >= 1000
+        previous.price !== price
     ) {
         history.push({
             time: now,
@@ -598,22 +950,34 @@ function updateChartForQuote(symbol, quote) {
         });
     }
 
-    while (history.length > CHART_MAX_POINTS) {
+    while (
+        history.length >
+        CHART_MAX_POINTS
+    ) {
         history.shift();
     }
 
-    const chartPrice = document.getElementById('chart-price');
+    const chartPrice =
+        document.getElementById(
+            'chart-price'
+        );
 
     if (chartPrice) {
         chartPrice.textContent =
-            formatQuote(price, quote.digits);
+            formatQuote(
+                price,
+                quote.digits
+            );
     }
 
-    setChartStatus('Live price · Read-only');
+    setChartStatus(
+        'Live · Read-only'
+    );
 
-    drawPriceChart(symbol);
-
-    const empty = document.getElementById('chart-empty');
+    const empty =
+        document.getElementById(
+            'chart-empty'
+        );
 
     if (empty) {
         empty.classList.toggle(
@@ -621,106 +985,173 @@ function updateChartForQuote(symbol, quote) {
             history.length > 0
         );
     }
+
+    drawPriceChart(symbol);
 }
 
 function setChartStatus(text) {
-    const status = document.getElementById('chart-status');
+    const status =
+        document.getElementById(
+            'chart-status'
+        );
 
     if (status) {
-        status.textContent = text;
+        status.textContent =
+            text;
+
+        status.className =
+            'status-tag status-success';
     }
 }
 
 function drawPriceChart(symbol) {
-    const canvas = document.getElementById('price-chart');
+    const canvas =
+        document.getElementById(
+            'price-chart'
+        );
 
     if (!canvas) {
         return;
     }
 
-    const wrapper = canvas.parentElement;
+    const wrapper =
+        canvas.parentElement;
 
-    const width = Math.max(
-        wrapper?.clientWidth || 700,
-        300
-    );
+    const width =
+        Math.max(
+            wrapper?.clientWidth || 700,
+            300
+        );
 
-    const height = Math.max(
-        wrapper?.clientHeight || 320,
-        240
-    );
+    const height =
+        Math.max(
+            wrapper?.clientHeight || 320,
+            240
+        );
 
-    const ratio = window.devicePixelRatio || 1;
+    const ratio =
+        window.devicePixelRatio || 1;
 
-    canvas.width = width * ratio;
-    canvas.height = height * ratio;
+    canvas.width =
+        width * ratio;
 
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
+    canvas.height =
+        height * ratio;
 
-    const ctx = canvas.getContext('2d');
+    canvas.style.width =
+        `${width}px`;
+
+    canvas.style.height =
+        `${height}px`;
+
+    const ctx =
+        canvas.getContext('2d');
 
     if (!ctx) {
         return;
     }
 
-    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.setTransform(
+        ratio,
+        0,
+        0,
+        ratio,
+        0,
+        0
+    );
 
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(
+        0,
+        0,
+        width,
+        height
+    );
 
-    drawChartGrid(ctx, width, height);
+    drawChartGrid(
+        ctx,
+        width,
+        height
+    );
 
-    const history = chartHistory[symbol] || [];
+    const history =
+        chartHistory[symbol] || [];
 
     if (history.length < 2) {
         return;
     }
 
-    const prices = history.map(point => point.price);
+    const prices =
+        history.map(
+            point => point.price
+        );
 
-    let min = Math.min(...prices);
-    let max = Math.max(...prices);
+    let min =
+        Math.min(...prices);
+
+    let max =
+        Math.max(...prices);
 
     if (min === max) {
         const padding =
-            Math.abs(min) * 0.0001 || 0.0001;
+            Math.abs(min) *
+                0.0001 ||
+            0.0001;
 
         min -= padding;
         max += padding;
     }
 
-    const range = max - min;
+    const range =
+        max - min;
 
     const paddingLeft = 52;
-    const paddingRight = 20;
+    const paddingRight = 24;
     const paddingTop = 24;
     const paddingBottom = 32;
 
     const plotWidth =
-        width - paddingLeft - paddingRight;
+        width -
+        paddingLeft -
+        paddingRight;
 
     const plotHeight =
-        height - paddingTop - paddingBottom;
+        height -
+        paddingTop -
+        paddingBottom;
 
-    const points = history.map((point, index) => {
-        const x =
-            paddingLeft +
-            (index / (history.length - 1)) * plotWidth;
+    const points =
+        history.map(
+            (point, index) => {
 
-        const y =
-            paddingTop +
-            (1 - (point.price - min) / range) *
-            plotHeight;
+                const x =
+                    paddingLeft +
+                    (
+                        index /
+                        (history.length - 1)
+                    ) *
+                    plotWidth;
 
-        return {
-            x,
-            y,
-            price: point.price
-        };
-    });
+                const y =
+                    paddingTop +
+                    (
+                        1 -
+                        (
+                            point.price -
+                            min
+                        ) /
+                        range
+                    ) *
+                    plotHeight;
 
-    // Area
-    const areaGradient =
+                return {
+                    x,
+                    y,
+                    price: point.price
+                };
+            }
+        );
+
+    const gradient =
         ctx.createLinearGradient(
             0,
             paddingTop,
@@ -728,14 +1159,14 @@ function drawPriceChart(symbol) {
             height
         );
 
-    areaGradient.addColorStop(
+    gradient.addColorStop(
         0,
-        'rgba(22, 119, 255, 0.18)'
+        'rgba(22,119,255,0.18)'
     );
 
-    areaGradient.addColorStop(
+    gradient.addColorStop(
         1,
-        'rgba(22, 119, 255, 0)'
+        'rgba(22,119,255,0)'
     );
 
     ctx.beginPath();
@@ -746,41 +1177,68 @@ function drawPriceChart(symbol) {
     );
 
     points.forEach(point => {
-        ctx.lineTo(point.x, point.y);
+        ctx.lineTo(
+            point.x,
+            point.y
+        );
     });
 
     ctx.lineTo(
-        points[points.length - 1].x,
+        points[
+            points.length - 1
+        ].x,
         height - paddingBottom
     );
 
     ctx.closePath();
 
-    ctx.fillStyle = areaGradient;
+    ctx.fillStyle =
+        gradient;
+
     ctx.fill();
 
-    // Line
+
     ctx.beginPath();
 
-    points.forEach((point, index) => {
-        if (index === 0) {
-            ctx.moveTo(point.x, point.y);
-        } else {
-            ctx.lineTo(point.x, point.y);
-        }
-    });
+    points.forEach(
+        (point, index) => {
 
-    ctx.strokeStyle = '#1677ff';
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = 'round';
-    ctx.lineCap = 'round';
+            if (index === 0) {
+                ctx.moveTo(
+                    point.x,
+                    point.y
+                );
+            } else {
+                ctx.lineTo(
+                    point.x,
+                    point.y
+                );
+            }
+        }
+    );
+
+    ctx.strokeStyle =
+        '#1677ff';
+
+    ctx.lineWidth =
+        2.5;
+
+    ctx.lineJoin =
+        'round';
+
+    ctx.lineCap =
+        'round';
 
     ctx.stroke();
 
-    // Current price dot
-    const last = points[points.length - 1];
+
+    const last =
+        points[
+            points.length - 1
+        ];
 
     ctx.beginPath();
+
     ctx.arc(
         last.x,
         last.y,
@@ -789,10 +1247,14 @@ function drawPriceChart(symbol) {
         Math.PI * 2
     );
 
-    ctx.fillStyle = '#1677ff';
+    ctx.fillStyle =
+        '#1677ff';
+
     ctx.fill();
 
+
     ctx.beginPath();
+
     ctx.arc(
         last.x,
         last.y,
@@ -802,17 +1264,25 @@ function drawPriceChart(symbol) {
     );
 
     ctx.strokeStyle =
-        'rgba(22, 119, 255, 0.22)';
+        'rgba(22,119,255,0.22)';
 
-    ctx.lineWidth = 2;
+    ctx.lineWidth =
+        2;
 
     ctx.stroke();
 
-    // Price label
-    ctx.fillStyle = '#172033';
-    ctx.font = '600 12px system-ui, sans-serif';
-    ctx.textAlign = 'right';
-    ctx.textBaseline = 'middle';
+
+    ctx.fillStyle =
+        '#172033';
+
+    ctx.font =
+        '600 12px system-ui, sans-serif';
+
+    ctx.textAlign =
+        'right';
+
+    ctx.textBaseline =
+        'middle';
 
     ctx.fillText(
         formatQuote(last.price),
@@ -821,61 +1291,109 @@ function drawPriceChart(symbol) {
     );
 }
 
-function drawChartGrid(ctx, width, height) {
+function drawChartGrid(
+    ctx,
+    width,
+    height
+) {
     const paddingLeft = 52;
-    const paddingRight = 20;
+    const paddingRight = 24;
     const paddingTop = 24;
     const paddingBottom = 32;
 
     const rows = 5;
+    const columns = 6;
 
-    ctx.strokeStyle = 'rgba(23, 32, 51, 0.07)';
+    ctx.strokeStyle =
+        'rgba(23,32,51,0.07)';
+
     ctx.lineWidth = 1;
 
-    for (let i = 0; i <= rows; i++) {
+    for (
+        let i = 0;
+        i <= rows;
+        i++
+    ) {
         const y =
             paddingTop +
-            (i / rows) *
-            (height - paddingTop - paddingBottom);
+            (
+                i / rows
+            ) *
+            (
+                height -
+                paddingTop -
+                paddingBottom
+            );
 
         ctx.beginPath();
-        ctx.moveTo(paddingLeft, y);
-        ctx.lineTo(width - paddingRight, y);
+
+        ctx.moveTo(
+            paddingLeft,
+            y
+        );
+
+        ctx.lineTo(
+            width - paddingRight,
+            y
+        );
+
         ctx.stroke();
     }
 
-    const columns = 6;
-
-    for (let i = 0; i <= columns; i++) {
+    for (
+        let i = 0;
+        i <= columns;
+        i++
+    ) {
         const x =
             paddingLeft +
-            (i / columns) *
-            (width - paddingLeft - paddingRight);
+            (
+                i / columns
+            ) *
+            (
+                width -
+                paddingLeft -
+                paddingRight
+            );
 
         ctx.beginPath();
-        ctx.moveTo(x, paddingTop);
-        ctx.lineTo(x, height - paddingBottom);
+
+        ctx.moveTo(
+            x,
+            paddingTop
+        );
+
+        ctx.lineTo(
+            x,
+            height -
+            paddingBottom
+        );
+
         ctx.stroke();
     }
 }
-
-window.addEventListener('resize', () => {
-    if (selectedSymbol) {
-        drawPriceChart(selectedSymbol);
-    }
-});
 
 
 /* =========================================================
    POSITIONS
 ========================================================= */
 
-function renderPositions(positions) {
-    const body = document.getElementById('pos-table-body');
-    const count = document.getElementById('pos-count');
+function renderPositions(
+    positions
+) {
+    const body =
+        document.getElementById(
+            'pos-table-body'
+        );
+
+    const count =
+        document.getElementById(
+            'pos-count'
+        );
 
     if (count) {
-        count.textContent = positions.length;
+        count.textContent =
+            positions.length;
     }
 
     if (!body) {
@@ -885,49 +1403,94 @@ function renderPositions(positions) {
     if (!positions.length) {
         body.innerHTML = `
             <tr>
-                <td colspan="8" class="table-empty">
-                    No open positions.
+                <td colspan="6">
+                    <div class="table-empty">
+                        No open positions.
+                    </div>
                 </td>
             </tr>
         `;
+
         return;
     }
 
-    body.innerHTML = positions.map(position => {
-        const type =
-            String(
-                position.type ??
-                position.side ??
-                ''
-            ).toUpperCase();
+    body.innerHTML =
+        positions.map(position => {
 
-        const buy = type.includes('BUY');
+            const type =
+                String(
+                    position.type ??
+                    position.side ??
+                    ''
+                ).toUpperCase();
 
-        const profit = Number(
-            position.profit ??
-            position.pnl ??
-            0
-        );
+            const isBuy =
+                type.includes('BUY');
 
-        return `
-            <tr>
-                <td>${safe(position.ticket ?? position.id ?? '—')}</td>
-                <td>${safe(position.symbol ?? '—')}</td>
-                <td>
-                    <span class="${buy ? 'buy' : 'sell'}">
-                        ${buy ? 'BUY' : 'SELL'}
-                    </span>
-                </td>
-                <td>${formatNumber(position.volume ?? position.lots)}</td>
-                <td>${formatNumber(position.price_open ?? position.open_price)}</td>
-                <td>${formatNumber(position.sl ?? position.stop_loss)}</td>
-                <td>${formatNumber(position.tp ?? position.take_profit)}</td>
-                <td class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">
-                    ${formatNumber(profit)}
-                </td>
-            </tr>
-        `;
-    }).join('');
+            const profit =
+                Number(
+                    position.profit ??
+                    position.pnl ??
+                    0
+                );
+
+            return `
+                <tr>
+
+                    <td>
+                        ${safe(
+                            position.ticket ??
+                            position.id ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td>
+                        ${safe(
+                            position.symbol ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td>
+                        <span class="${
+                            isBuy
+                                ? 'buy'
+                                : 'sell'
+                        }">
+                            ${isBuy
+                                ? 'BUY'
+                                : 'SELL'}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${formatNumber(
+                            position.volume ??
+                            position.lots
+                        )}
+                    </td>
+
+                    <td>
+                        ${formatNumber(
+                            position.price_open ??
+                            position.open_price
+                        )}
+                    </td>
+
+                    <td class="${
+                        profit >= 0
+                            ? 'profit-pos'
+                            : 'profit-neg'
+                    }">
+                        ${formatNumber(
+                            profit
+                        )}
+                    </td>
+
+                </tr>
+            `;
+        }).join('');
 }
 
 
@@ -935,12 +1498,22 @@ function renderPositions(positions) {
    ORDERS
 ========================================================= */
 
-function renderOrders(orders) {
-    const body = document.getElementById('orders-table-body');
-    const count = document.getElementById('orders-count');
+function renderOrders(
+    orders
+) {
+    const body =
+        document.getElementById(
+            'orders-table-body'
+        );
+
+    const count =
+        document.getElementById(
+            'orders-count'
+        );
 
     if (count) {
-        count.textContent = orders.length;
+        count.textContent =
+            orders.length;
     }
 
     if (!body) {
@@ -950,40 +1523,77 @@ function renderOrders(orders) {
     if (!orders.length) {
         body.innerHTML = `
             <tr>
-                <td colspan="7" class="table-empty">
-                    No pending orders.
+                <td colspan="5">
+                    <div class="table-empty">
+                        No pending orders.
+                    </div>
                 </td>
             </tr>
         `;
+
         return;
     }
 
-    body.innerHTML = orders.map(order => {
-        const type =
-            String(
-                order.type ??
-                order.side ??
-                ''
-            ).toUpperCase();
+    body.innerHTML =
+        orders.map(order => {
 
-        const buy = type.includes('BUY');
+            const type =
+                String(
+                    order.type ??
+                    order.side ??
+                    ''
+                ).toUpperCase();
 
-        return `
-            <tr>
-                <td>${safe(order.ticket ?? order.id ?? '—')}</td>
-                <td>${safe(order.symbol ?? '—')}</td>
-                <td>
-                    <span class="${buy ? 'buy' : 'sell'}">
-                        ${safe(type || '—')}
-                    </span>
-                </td>
-                <td>${formatNumber(order.volume ?? order.lots)}</td>
-                <td>${formatNumber(order.price_open ?? order.price)}</td>
-                <td>${formatNumber(order.sl ?? order.stop_loss)}</td>
-                <td>${formatNumber(order.tp ?? order.take_profit)}</td>
-            </tr>
-        `;
-    }).join('');
+            const isBuy =
+                type.includes('BUY');
+
+            return `
+                <tr>
+
+                    <td>
+                        ${safe(
+                            order.ticket ??
+                            order.id ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td>
+                        ${safe(
+                            order.symbol ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td>
+                        <span class="${
+                            isBuy
+                                ? 'buy'
+                                : 'sell'
+                        }">
+                            ${safe(
+                                type || '—'
+                            )}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${formatNumber(
+                            order.volume ??
+                            order.lots
+                        )}
+                    </td>
+
+                    <td>
+                        ${formatNumber(
+                            order.price_open ??
+                            order.price
+                        )}
+                    </td>
+
+                </tr>
+            `;
+        }).join('');
 }
 
 
@@ -991,12 +1601,22 @@ function renderOrders(orders) {
    HISTORY
 ========================================================= */
 
-function renderHistory(history) {
-    const body = document.getElementById('history-table-body');
-    const count = document.getElementById('history-count');
+function renderHistory(
+    history
+) {
+    const body =
+        document.getElementById(
+            'history-table-body'
+        );
+
+    const count =
+        document.getElementById(
+            'history-count'
+        );
 
     if (count) {
-        count.textContent = history.length;
+        count.textContent =
+            history.length;
     }
 
     if (!body) {
@@ -1006,50 +1626,105 @@ function renderHistory(history) {
     if (!history.length) {
         body.innerHTML = `
             <tr>
-                <td colspan="7" class="table-empty">
-                    No trade history available.
+                <td colspan="7">
+                    <div class="table-empty">
+                        No closed deals.
+                    </div>
                 </td>
             </tr>
         `;
+
         return;
     }
 
-    const recent = [...history].reverse();
+    const recent =
+        [...history].reverse();
 
-    body.innerHTML = recent.map(deal => {
-        const type =
-            String(
-                deal.type ??
-                deal.side ??
-                ''
-            ).toUpperCase();
+    body.innerHTML =
+        recent.map(deal => {
 
-        const buy = type.includes('BUY');
+            const type =
+                String(
+                    deal.type ??
+                    deal.side ??
+                    ''
+                ).toUpperCase();
 
-        const profit = Number(
-            deal.profit ??
-            deal.pnl ??
-            0
-        );
+            const isBuy =
+                type.includes('BUY');
 
-        return `
-            <tr>
-                <td>${safe(deal.ticket ?? deal.id ?? '—')}</td>
-                <td>${safe(deal.symbol ?? '—')}</td>
-                <td>
-                    <span class="${buy ? 'buy' : 'sell'}">
-                        ${safe(type || '—')}
-                    </span>
-                </td>
-                <td>${formatNumber(deal.volume ?? deal.lots)}</td>
-                <td>${formatNumber(deal.price ?? deal.price_open)}</td>
-                <td>${safe(deal.time ?? deal.timestamp ?? '—')}</td>
-                <td class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">
-                    ${formatNumber(profit)}
-                </td>
-            </tr>
-        `;
-    }).join('');
+            const profit =
+                Number(
+                    deal.profit ??
+                    deal.pnl ??
+                    0
+                );
+
+            return `
+                <tr>
+
+                    <td>
+                        ${safe(
+                            deal.ticket ??
+                            deal.id ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td>
+                        ${safe(
+                            deal.symbol ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td>
+                        <span class="${
+                            isBuy
+                                ? 'buy'
+                                : 'sell'
+                        }">
+                            ${safe(
+                                type || '—'
+                            )}
+                        </span>
+                    </td>
+
+                    <td>
+                        ${formatNumber(
+                            deal.volume ??
+                            deal.lots
+                        )}
+                    </td>
+
+                    <td>
+                        ${formatNumber(
+                            deal.price ??
+                            deal.price_open
+                        )}
+                    </td>
+
+                    <td>
+                        ${safe(
+                            deal.time ??
+                            deal.timestamp ??
+                            '—'
+                        )}
+                    </td>
+
+                    <td class="${
+                        profit >= 0
+                            ? 'profit-pos'
+                            : 'profit-neg'
+                    }">
+                        ${formatNumber(
+                            profit
+                        )}
+                    </td>
+
+                </tr>
+            `;
+        }).join('');
 }
 
 
@@ -1057,65 +1732,93 @@ function renderHistory(history) {
    ANALYTICS
 ========================================================= */
 
-function renderAnalytics(history) {
-    const totalTrades = history.length;
-
+function renderAnalytics(
+    history
+) {
     let totalPL = 0;
     let wins = 0;
-    let losses = 0;
     let grossProfit = 0;
     let grossLoss = 0;
 
     history.forEach(deal => {
-        const profit = Number(
-            deal.profit ??
-            deal.pnl ??
-            0
-        );
+
+        const profit =
+            Number(
+                deal.profit ??
+                deal.pnl ??
+                0
+            );
 
         totalPL += profit;
 
         if (profit > 0) {
             wins++;
             grossProfit += profit;
-        } else if (profit < 0) {
-            losses++;
-            grossLoss += Math.abs(profit);
+        }
+
+        if (profit < 0) {
+            grossLoss +=
+                Math.abs(profit);
         }
     });
 
+    const totalTrades =
+        history.length;
+
     const winRate =
-        totalTrades > 0
-            ? (wins / totalTrades) * 100
+        totalTrades
+            ? (
+                wins /
+                totalTrades
+            ) * 100
             : 0;
 
     const profitFactor =
         grossLoss > 0
-            ? grossProfit / grossLoss
+            ? grossProfit /
+              grossLoss
             : grossProfit > 0
                 ? Infinity
                 : 0;
 
-    const trades = document.getElementById('analytics-trades');
-    const pl = document.getElementById('analytics-pl');
-    const winrate = document.getElementById('analytics-winrate');
-    const pf = document.getElementById('analytics-pf');
+    const trades =
+        document.getElementById(
+            'analytics-trades'
+        );
+
+    const pl =
+        document.getElementById(
+            'analytics-pl'
+        );
+
+    const winrate =
+        document.getElementById(
+            'analytics-winrate'
+        );
+
+    const pf =
+        document.getElementById(
+            'analytics-pf'
+        );
 
     if (trades) {
-        trades.textContent = totalTrades;
+        trades.textContent =
+            totalTrades;
     }
 
     if (pl) {
-        pl.textContent = formatNumber(totalPL);
+        pl.textContent =
+            formatNumber(totalPL);
+
         pl.className =
             totalPL >= 0
-                ? 'metric-value profit-pos'
-                : 'metric-value profit-neg';
+                ? 'profit-pos'
+                : 'profit-neg';
     }
 
     if (winrate) {
         winrate.textContent =
-            `${winRateSafe(winRate)}%`;
+            `${winRate.toFixed(1)}%`;
     }
 
     if (pf) {
@@ -1126,14 +1829,6 @@ function renderAnalytics(history) {
     }
 }
 
-function winRateSafe(value) {
-    if (!Number.isFinite(value)) {
-        return '0.0';
-    }
-
-    return value.toFixed(1);
-}
-
 
 /* =========================================================
    SIGNALS
@@ -1141,14 +1836,19 @@ function winRateSafe(value) {
 
 async function fetchSignals() {
     const container =
-        document.getElementById('signals-container');
+        document.getElementById(
+            'signals-container'
+        );
 
     if (!container) {
         return;
     }
 
     try {
-        const data = await apiFetch('/v1/signals');
+        const data =
+            await apiFetch(
+                '/v1/signals'
+            );
 
         const signals =
             Array.isArray(data)
@@ -1157,108 +1857,191 @@ async function fetchSignals() {
 
         if (!signals.length) {
             container.innerHTML = `
-                <div class="empty-state">
+                <div class="empty-state glass">
                     No trade signals are currently available.
                 </div>
             `;
+
             return;
         }
 
-        container.innerHTML = signals.map(signal => {
-            const direction =
-                String(
-                    signal.direction ??
-                    signal.side ??
-                    signal.action ??
-                    ''
-                ).toUpperCase();
+        container.innerHTML =
+            signals.map(signal => {
 
-            const buy =
-                direction === 'BUY';
+                const direction =
+                    String(
+                        signal.direction ??
+                        signal.side ??
+                        signal.action ??
+                        ''
+                    ).toUpperCase();
 
-            const strength =
-                signal.strength ??
-                signal.confidence ??
-                '—';
+                const isBuy =
+                    direction === 'BUY';
 
-            return `
-                <article class="signal-card">
-                    <div class="signal-header">
-                        <div>
-                            <span class="signal-symbol">
-                                ${safe(signal.symbol ?? 'Unknown')}
+                const confluence =
+                    Array.isArray(
+                        signal.confluence
+                    )
+                        ? signal.confluence.join(' · ')
+                        : signal.confluence ??
+                          '—';
+
+                return `
+                    <article class="signal-card glass">
+
+                        <div class="signal-header">
+
+                            <div>
+
+                                <span class="signal-symbol">
+                                    ${safe(
+                                        signal.symbol ??
+                                        'Unknown'
+                                    )}
+                                </span>
+
+                                <span class="signal-timeframe">
+                                    ${safe(
+                                        signal.timeframe ??
+                                        '—'
+                                    )}
+                                </span>
+
+                            </div>
+
+                            <span class="signal-direction ${
+                                isBuy
+                                    ? 'buy'
+                                    : 'sell'
+                            }">
+                                ${safe(
+                                    direction ||
+                                    '—'
+                                )}
                             </span>
 
-                            <span class="signal-timeframe">
-                                ${safe(signal.timeframe ?? '—')}
+                        </div>
+
+
+                        <div class="signal-grid">
+
+                            <div class="signal-item">
+                                <span>Strength</span>
+                                <strong>
+                                    ${safe(
+                                        signal.strength ??
+                                        signal.confidence ??
+                                        '—'
+                                    )}
+                                </strong>
+                            </div>
+
+
+                            <div class="signal-item">
+                                <span>Strategy</span>
+                                <strong>
+                                    ${safe(
+                                        signal.strategy ??
+                                        '—'
+                                    )}
+                                </strong>
+                            </div>
+
+
+                            <div class="signal-item">
+                                <span>Risk / Reward</span>
+                                <strong>
+                                    ${safe(
+                                        signal.risk_reward ??
+                                        signal.rr ??
+                                        '—'
+                                    )}
+                                </strong>
+                            </div>
+
+
+                            <div class="signal-item">
+                                <span>Entry</span>
+                                <strong>
+                                    ${formatNumber(
+                                        signal.entry
+                                    )}
+                                </strong>
+                            </div>
+
+
+                            <div class="signal-item">
+                                <span>Stop Loss</span>
+                                <strong>
+                                    ${formatNumber(
+                                        signal.stop_loss ??
+                                        signal.sl
+                                    )}
+                                </strong>
+                            </div>
+
+
+                            <div class="signal-item">
+                                <span>TP1</span>
+                                <strong>
+                                    ${formatNumber(
+                                        signal.tp1
+                                    )}
+                                </strong>
+                            </div>
+
+
+                            <div class="signal-item">
+                                <span>TP2</span>
+                                <strong>
+                                    ${formatNumber(
+                                        signal.tp2
+                                    )}
+                                </strong>
+                            </div>
+
+                        </div>
+
+
+                        <div class="signal-confluence">
+
+                            <span>
+                                Confluence
                             </span>
+
+                            <p>
+                                ${safe(
+                                    confluence
+                                )}
+                            </p>
+
                         </div>
 
-                        <span class="signal-direction ${buy ? 'buy' : 'sell'}">
-                            ${safe(direction || '—')}
-                        </span>
-                    </div>
 
-                    <div class="signal-grid">
-                        <div class="signal-item">
-                            <span>Strength</span>
-                            <strong>${safe(strength)}</strong>
+                        <div class="read-only-note">
+                            Read-only market analysis
                         </div>
 
-                        <div class="signal-item">
-                            <span>Strategy</span>
-                            <strong>${safe(signal.strategy ?? '—')}</strong>
-                        </div>
-
-                        <div class="signal-item">
-                            <span>Risk / Reward</span>
-                            <strong>${safe(signal.risk_reward ?? signal.rr ?? '—')}</strong>
-                        </div>
-
-                        <div class="signal-item">
-                            <span>Entry</span>
-                            <strong>${formatNumber(signal.entry)}</strong>
-                        </div>
-
-                        <div class="signal-item">
-                            <span>Stop Loss</span>
-                            <strong>${formatNumber(signal.stop_loss ?? signal.sl)}</strong>
-                        </div>
-
-                        <div class="signal-item">
-                            <span>TP1</span>
-                            <strong>${formatNumber(signal.tp1)}</strong>
-                        </div>
-
-                        <div class="signal-item">
-                            <span>TP2</span>
-                            <strong>${formatNumber(signal.tp2)}</strong>
-                        </div>
-                    </div>
-
-                    <div class="signal-confluence">
-                        <span>Confluence</span>
-                        <p>
-                            ${safe(
-                                Array.isArray(signal.confluence)
-                                    ? signal.confluence.join(' · ')
-                                    : signal.confluence ?? '—'
-                            )}
-                        </p>
-                    </div>
-
-                    <div class="read-only-note">
-                        Read-only market analysis
-                    </div>
-                </article>
-            `;
-        }).join('');
+                    </article>
+                `;
+            }).join('');
 
     } catch (error) {
+
+        console.error(
+            'Signal loading error:',
+            error
+        );
+
         container.innerHTML = `
-            <div class="empty-state error-state">
+            <div class="empty-state glass error-state">
                 Unable to load signals.
-                <small>${safe(error.message)}</small>
+                <small>
+                    ${safe(
+                        error.message
+                    )}
+                </small>
             </div>
         `;
     }
@@ -1269,39 +2052,58 @@ async function fetchSignals() {
    JOURNAL
 ========================================================= */
 
-async function saveJournal() {
+async function saveJournalEntry() {
     const ticket =
-        document.getElementById('journal-ticket')?.value.trim();
+        document.getElementById(
+            'journal-ticket'
+        )?.value.trim();
 
     const setup =
-        document.getElementById('journal-setup')?.value.trim();
+        document.getElementById(
+            'journal-setup'
+        )?.value.trim();
 
     const notes =
-        document.getElementById('journal-notes')?.value.trim();
+        document.getElementById(
+            'journal-notes'
+        )?.value.trim();
 
     if (!setup && !notes) {
-        alert('Please enter a setup or journal note.');
+        alert(
+            'Please enter a setup or journal note.'
+        );
+
         return;
     }
 
     try {
-        await apiFetch('/v1/journal/save', {
-            method: 'POST',
-            body: JSON.stringify({
-                ticket,
-                setup,
-                notes
-            })
-        });
+        await apiFetch(
+            '/v1/journal/save',
+            {
+                method: 'POST',
+
+                body: JSON.stringify({
+                    ticket,
+                    setup,
+                    notes
+                })
+            }
+        );
 
         const ticketInput =
-            document.getElementById('journal-ticket');
+            document.getElementById(
+                'journal-ticket'
+            );
 
         const setupInput =
-            document.getElementById('journal-setup');
+            document.getElementById(
+                'journal-setup'
+            );
 
         const notesInput =
-            document.getElementById('journal-notes');
+            document.getElementById(
+                'journal-notes'
+            );
 
         if (ticketInput) {
             ticketInput.value = '';
@@ -1318,27 +2120,42 @@ async function saveJournal() {
         await fetchJournal();
 
     } catch (error) {
+
+        console.error(
+            'Journal save error:',
+            error
+        );
+
         alert(
-            `Unable to save journal entry: ${error.message}`
+            `Unable to save journal entry: ${
+                error.message
+            }`
         );
     }
 }
 
 async function fetchJournal() {
     const container =
-        document.getElementById('journal-list-container');
+        document.getElementById(
+            'journal-list-container'
+        );
 
     if (!container) {
         return;
     }
 
     try {
-        const data = await apiFetch('/v1/journal');
+        const data =
+            await apiFetch(
+                '/v1/journal'
+            );
 
         const entries =
             Array.isArray(data)
                 ? data
-                : data?.journal || data?.entries || [];
+                : data?.journal ||
+                  data?.entries ||
+                  [];
 
         if (!entries.length) {
             container.innerHTML = `
@@ -1346,55 +2163,80 @@ async function fetchJournal() {
                     No journal entries yet.
                 </div>
             `;
+
             return;
         }
 
-        container.innerHTML = entries.map(entry => `
-            <article class="journal-entry">
-                <div class="journal-entry-header">
-                    <div>
-                        <strong>
-                            ${safe(
-                                entry.setup ||
-                                entry.title ||
-                                'Journal Entry'
-                            )}
-                        </strong>
+        container.innerHTML =
+            entries.map(entry => `
 
-                        ${
-                            entry.ticket
-                                ? `<span class="journal-ticket">
-                                    #${safe(entry.ticket)}
-                                   </span>`
-                                : ''
-                        }
+                <article class="journal-entry">
+
+                    <div class="journal-entry-header">
+
+                        <div>
+
+                            <strong>
+                                ${safe(
+                                    entry.setup ||
+                                    entry.title ||
+                                    'Journal Entry'
+                                )}
+                            </strong>
+
+                            ${
+                                entry.ticket
+                                    ? `
+                                        <span class="journal-ticket">
+                                            #${safe(
+                                                entry.ticket
+                                            )}
+                                        </span>
+                                      `
+                                    : ''
+                            }
+
+                        </div>
+
+                        <time>
+                            ${safe(
+                                entry.created_at ||
+                                entry.timestamp ||
+                                entry.date ||
+                                ''
+                            )}
+                        </time>
+
                     </div>
 
-                    <time>
+
+                    <p>
                         ${safe(
-                            entry.created_at ||
-                            entry.timestamp ||
-                            entry.date ||
+                            entry.notes ||
+                            entry.note ||
                             ''
                         )}
-                    </time>
-                </div>
+                    </p>
 
-                <p>
-                    ${safe(
-                        entry.notes ||
-                        entry.note ||
-                        ''
-                    )}
-                </p>
-            </article>
-        `).join('');
+                </article>
+
+            `).join('');
 
     } catch (error) {
+
+        console.error(
+            'Journal loading error:',
+            error
+        );
+
         container.innerHTML = `
             <div class="empty-state error-state">
                 Unable to load journal.
-                <small>${safe(error.message)}</small>
+                <small>
+                    ${safe(
+                        error.message
+                    )}
+                </small>
             </div>
         `;
     }
@@ -1407,14 +2249,19 @@ async function fetchJournal() {
 
 async function fetchDevices() {
     const body =
-        document.getElementById('devices-table-body');
+        document.getElementById(
+            'devices-table-body'
+        );
 
     if (!body) {
         return;
     }
 
     try {
-        const data = await apiFetch('/v1/devices');
+        const data =
+            await apiFetch(
+                '/v1/devices'
+            );
 
         const devices =
             Array.isArray(data)
@@ -1424,8 +2271,10 @@ async function fetchDevices() {
         if (!devices.length) {
             body.innerHTML = `
                 <tr>
-                    <td colspan="5" class="table-empty">
-                        No paired devices.
+                    <td colspan="5">
+                        <div class="table-empty">
+                            No paired devices.
+                        </div>
                     </td>
                 </tr>
             `;
@@ -1433,40 +2282,84 @@ async function fetchDevices() {
             return;
         }
 
-        body.innerHTML = devices.map(device => `
-            <tr>
-                <td>${safe(device.name ?? device.device_name ?? 'MT5')}</td>
-                <td>${safe(device.id ?? device.device_id ?? '—')}</td>
-                <td>${safe(device.status ?? 'Active')}</td>
-                <td>${safe(device.created_at ?? device.created ?? '—')}</td>
-                <td>
-                    <button
-                        type="button"
-                        class="small-danger-btn"
-                        onclick="revokeDevice('${escapeAttr(
-                            device.id ??
-                            device.device_id ??
-                            ''
-                        )}')"
-                    >
-                        Revoke
-                    </button>
-                </td>
-            </tr>
-        `).join('');
+        body.innerHTML =
+            devices.map(device => {
+
+                const id =
+                    device.id ??
+                    device.device_id ??
+                    '';
+
+                return `
+                    <tr>
+
+                        <td>
+                            ${safe(id)}
+                        </td>
+
+                        <td>
+                            ${safe(
+                                device.created_at ??
+                                device.created ??
+                                '—'
+                            )}
+                        </td>
+
+                        <td>
+                            ${safe(
+                                device.last_active ??
+                                device.last_seen ??
+                                '—'
+                            )}
+                        </td>
+
+                        <td>
+                            <span class="status-tag status-success">
+                                ${safe(
+                                    device.status ??
+                                    'Active'
+                                )}
+                            </span>
+                        </td>
+
+                        <td>
+
+                            <button
+                                type="button"
+                                class="small-danger-btn"
+                                onclick="revokeDevice('${safe(id)}')"
+                            >
+                                Revoke
+                            </button>
+
+                        </td>
+
+                    </tr>
+                `;
+            }).join('');
 
     } catch (error) {
+
+        console.error(
+            'Device loading error:',
+            error
+        );
+
         body.innerHTML = `
             <tr>
-                <td colspan="5" class="table-empty">
-                    Unable to load devices.
+                <td colspan="5">
+                    <div class="table-empty">
+                        Unable to load devices.
+                    </div>
                 </td>
             </tr>
         `;
     }
 }
 
-async function revokeDevice(deviceId) {
+async function revokeDevice(
+    deviceId
+) {
     if (!deviceId) {
         return;
     }
@@ -1481,37 +2374,55 @@ async function revokeDevice(deviceId) {
     }
 
     try {
-        await apiFetch('/v1/device/revoke', {
-            method: 'POST',
-            body: JSON.stringify({
-                device_id: deviceId
-            })
-        });
+        await apiFetch(
+            '/v1/device/revoke',
+            {
+                method: 'POST',
+
+                body: JSON.stringify({
+                    device_id: deviceId
+                })
+            }
+        );
 
         await fetchDevices();
 
     } catch (error) {
+
+        console.error(
+            'Device revoke error:',
+            error
+        );
+
         alert(
-            `Unable to revoke device: ${error.message}`
+            `Unable to revoke device: ${
+                error.message
+            }`
         );
     }
 }
 
 async function createPairingCode() {
     const display =
-        document.getElementById('pairing-code-display');
+        document.getElementById(
+            'pairing-code-display'
+        );
 
     if (!display) {
         return;
     }
 
-    display.textContent = 'Generating...';
+    display.textContent =
+        'Generating...';
 
     try {
         const data =
-            await apiFetch('/v1/pairing/create', {
-                method: 'POST'
-            });
+            await apiFetch(
+                '/v1/pairing/create',
+                {
+                    method: 'POST'
+                }
+            );
 
         const code =
             data?.code ??
@@ -1519,80 +2430,19 @@ async function createPairingCode() {
             data?.pairingCode ??
             'Unavailable';
 
-        display.textContent = code;
+        display.textContent =
+            code;
 
     } catch (error) {
-        display.textContent = 'Unable to generate code';
 
         console.error(
-            'Pairing code error:',
+            'Pairing error:',
             error
         );
+
+        display.textContent =
+            'Unable to generate code';
     }
-}
-
-
-/* =========================================================
-   FORMATTING
-========================================================= */
-
-function formatNumber(value) {
-    if (
-        value === null ||
-        value === undefined ||
-        value === ''
-    ) {
-        return '—';
-    }
-
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-        return safe(value);
-    }
-
-    return number.toLocaleString(
-        undefined,
-        {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }
-    );
-}
-
-function formatQuote(value, digits) {
-    if (
-        value === null ||
-        value === undefined ||
-        value === ''
-    ) {
-        return '—';
-    }
-
-    const number = Number(value);
-
-    if (!Number.isFinite(number)) {
-        return safe(value);
-    }
-
-    let decimalPlaces =
-        Number.isFinite(Number(digits))
-            ? Number(digits)
-            : 5;
-
-    decimalPlaces =
-        Math.max(
-            0,
-            Math.min(decimalPlaces, 8)
-        );
-
-    return number.toLocaleString(
-        undefined,
-        {
-            minimumFractionDigits: decimalPlaces,
-            maximumFractionDigits: decimalPlaces
-        }
-    );
 }
 
 
@@ -1602,13 +2452,19 @@ function formatQuote(value, digits) {
 
 function closeMobileMenu() {
     const navigation =
-        document.getElementById('main-navigation');
+        document.getElementById(
+            'main-navigation'
+        );
 
     const toggle =
-        document.getElementById('menu-toggle');
+        document.getElementById(
+            'menu-toggle'
+        );
 
     if (navigation) {
-        navigation.classList.remove('open');
+        navigation.classList.remove(
+            'open'
+        );
     }
 
     if (toggle) {
@@ -1621,22 +2477,30 @@ function closeMobileMenu() {
 
 function toggleMobileMenu() {
     const navigation =
-        document.getElementById('main-navigation');
+        document.getElementById(
+            'main-navigation'
+        );
 
     const toggle =
-        document.getElementById('menu-toggle');
+        document.getElementById(
+            'menu-toggle'
+        );
 
     if (!navigation) {
         return;
     }
 
-    const open =
-        navigation.classList.toggle('open');
+    const isOpen =
+        navigation.classList.toggle(
+            'open'
+        );
 
     if (toggle) {
         toggle.setAttribute(
             'aria-expanded',
-            open ? 'true' : 'false'
+            isOpen
+                ? 'true'
+                : 'false'
         );
     }
 }
@@ -1649,8 +2513,11 @@ function toggleMobileMenu() {
 document.addEventListener(
     'DOMContentLoaded',
     () => {
+
         const menuToggle =
-            document.getElementById('menu-toggle');
+            document.getElementById(
+                'menu-toggle'
+            );
 
         if (menuToggle) {
             menuToggle.addEventListener(
@@ -1659,72 +2526,90 @@ document.addEventListener(
             );
         }
 
-        document.querySelectorAll('.nav-btn').forEach(
-            button => {
+
+        document
+            .querySelectorAll('.nav-btn')
+            .forEach(button => {
+
                 button.addEventListener(
                     'click',
                     closeMobileMenu
                 );
+
+            });
+
+
+        const emailInput =
+            document.getElementById(
+                'email'
+            );
+
+        const passwordInput =
+            document.getElementById(
+                'password'
+            );
+
+
+        if (emailInput) {
+            emailInput.addEventListener(
+                'keydown',
+                event => {
+
+                    if (
+                        event.key === 'Enter'
+                    ) {
+                        handleAuth();
+                    }
+
+                }
+            );
+        }
+
+
+        if (passwordInput) {
+            passwordInput.addEventListener(
+                'keydown',
+                event => {
+
+                    if (
+                        event.key === 'Enter'
+                    ) {
+                        handleAuth();
+                    }
+
+                }
+            );
+        }
+
+
+        window.addEventListener(
+            'resize',
+            () => {
+
+                if (
+                    window.innerWidth > 768
+                ) {
+                    closeMobileMenu();
+                }
+
+                if (
+                    selectedSymbol
+                ) {
+                    drawPriceChart(
+                        selectedSymbol
+                    );
+                }
+
             }
         );
 
-        const authForm =
-            document.getElementById('auth-form');
-
-        if (authForm) {
-            authForm.addEventListener(
-                'submit',
-                handleAuth
-            );
-        }
-
-        const authToggle =
-            document.getElementById('auth-toggle');
-
-        if (authToggle) {
-            authToggle.addEventListener(
-                'click',
-                toggleAuthMode
-            );
-        }
-
-        const logoutButton =
-            document.getElementById('logout-btn');
-
-        if (logoutButton) {
-            logoutButton.addEventListener(
-                'click',
-                logout
-            );
-        }
-
-        const pairingButton =
-            document.getElementById('create-pairing-btn');
-
-        if (pairingButton) {
-            pairingButton.addEventListener(
-                'click',
-                createPairingCode
-            );
-        }
 
         if (getToken()) {
             showApp();
         } else {
-            const authScreen =
-                document.getElementById('auth-screen');
-
-            const appShell =
-                document.getElementById('app-shell');
-
-            if (authScreen) {
-                authScreen.classList.remove('hidden');
-            }
-
-            if (appShell) {
-                appShell.classList.add('hidden');
-            }
+            showLogin();
         }
+
     }
 );
 
@@ -1733,24 +2618,38 @@ document.addEventListener(
    SERVICE WORKER
 ========================================================= */
 
-if ('serviceWorker' in navigator) {
+if (
+    'serviceWorker' in navigator
+) {
     window.addEventListener(
         'load',
         () => {
+
             navigator.serviceWorker
-                .register('/service-worker.js')
-                .then(registration => {
-                    console.log(
-                        'TradePro service worker registered:',
-                        registration.scope
-                    );
-                })
-                .catch(error => {
-                    console.error(
-                        'TradePro service worker registration failed:',
-                        error
-                    );
-                });
+                .register(
+                    '/service-worker.js'
+                )
+                .then(
+                    registration => {
+
+                        console.log(
+                            'TradePro service worker registered:',
+                            registration.scope
+                        );
+
+                    }
+                )
+                .catch(
+                    error => {
+
+                        console.error(
+                            'TradePro service worker registration failed:',
+                            error
+                        );
+
+                    }
+                );
+
         }
     );
 }
