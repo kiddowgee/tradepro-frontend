@@ -78,7 +78,20 @@ th{color:#38bdf8;background:#0f172a}
   <div id="history-container"><div class="section-empty">No deal history loaded yet.</div></div>
 
   <hr style="border-color:#334155;margin:25px 0;">
-  <h2>Pair New Connector</h2>
+  <h2>Connect Your MetaTrader 5</h2>
+  <ol style="padding-left:20px;margin:0 0 10px 0;color:#cbd5e1;">
+    <li>Download the connector and run it on the Windows PC where MetaTrader 5 is installed.</li>
+    <li>Click <b>Generate Pairing Code</b> below.</li>
+    <li>Enter the code in the connector and click <b>Pair this PC</b>.</li>
+  </ol>
+  <a href="https://github.com/kiddowgee/tradepro-frontend/releases/latest/download/TradeProConnector.exe"
+     style="display:block;text-align:center;text-decoration:none;background:#16a34a;color:#fff;font-weight:bold;padding:10px;border-radius:4px;margin:10px 0;">
+    Download Connector for Windows
+  </a>
+  <div style="font-size:.8em;color:#94a3b8;margin-bottom:6px;">
+    Windows may show "Windows protected your PC". Click <b>More info</b>, then <b>Run anyway</b>.
+    The connector only reads your account; it cannot place or change trades.
+  </div>
   <button onclick="createPairingCode()">Generate Pairing Code</button>
   <div id="pairing-code-display" style="margin-top:10px;font-size:1.2em;"></div>
 </div>
