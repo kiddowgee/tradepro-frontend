@@ -1,475 +1,1756 @@
 const API_URL = 'https://api.tradeassist.online';
+
 let isRegister = false;
 let pollTimer = null;
 let currentTab = 'dashboard';
 
-window.addEventListener('DOMContentLoaded', () => {
-    const token = localStorage.getItem('access_token');
-    const savedEmail = localStorage.getItem('user_email');
-    if (token) {
-        showApp(savedEmail || 'User');
+const chartHistory = {};
+const CHART_MAX_POINTS = 100;
+
+let selectedSymbol = null;
+let lastQuotes = {};
+
+
+/* =========================================================
+   HELPERS
+========================================================= */
+
+function safe(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function escapeAttr(value) {
+    return safe(value);
+}
+
+function getToken() {
+    return localStorage.getItem('access_token');
+}
+
+function authHeaders() {
+    const token = getToken();
+
+    return token
+        ? {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        }
+        : {
+            'Content-Type': 'application/json'
+        };
+}
+
+async function apiFetch(path, options = {}) {
+    const response = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers: {
+            ...authHeaders(),
+            ...(options.headers || {})
+        }
+    });
+
+    if (response.status === 401) {
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('user_email');
+        window.location.reload();
+        return null;
     }
-});
+
+    let data = null;
+
+    try {
+        data = await response.json();
+    } catch {
+        data = null;
+    }
+
+    if (!response.ok) {
+        throw new Error(
+            data?.detail ||
+            data?.message ||
+            `Request failed (${response.status})`
+        );
+    }
+
+    return data;
+}
+
+
+/* =========================================================
+   AUTHENTICATION
+========================================================= */
 
 function toggleAuthMode() {
     isRegister = !isRegister;
-    document.getElementById('auth-title').innerText = isRegister ? 'Register' : 'Login';
-    document.getElementById('auth-btn').innerText = isRegister ? 'Register' : 'Login';
-    document.getElementById('auth-toggle').innerText = isRegister ? 'Have an account? Login' : 'Need an account? Register';
-    document.getElementById('auth-error').innerText = '';
+
+    const title = document.getElementById('auth-title');
+    const button = document.getElementById('auth-btn');
+    const toggle = document.getElementById('auth-toggle');
+    const error = document.getElementById('auth-error');
+
+    if (title) {
+        title.textContent = isRegister ? 'Create your account' : 'Welcome back';
+    }
+
+    if (button) {
+        button.textContent = isRegister ? 'Create Account' : 'Sign In';
+    }
+
+    if (toggle) {
+        toggle.textContent = isRegister
+            ? 'Already have an account? Sign in'
+            : 'Need an account? Create one';
+    }
+
+    if (error) {
+        error.textContent = '';
+        error.classList.add('hidden');
+    }
 }
 
-function switchTab(tabName) {
-    currentTab = tabName;
-    document.querySelectorAll('.tab-view').forEach(el => el.classList.add('hidden'));
-    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+async function handleAuth(event) {
+    if (event) {
+        event.preventDefault();
+    }
 
-    const activeView = document.getElementById(`view-${tabName}`);
-    const activeBtn = document.getElementById(`tab-${tabName}`);
-    if (activeView) activeView.classList.remove('hidden');
-    if (activeBtn) activeBtn.classList.add('active');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const button = document.getElementById('auth-btn');
+    const error = document.getElementById('auth-error');
+
+    const email = emailInput?.value.trim();
+    const password = passwordInput?.value;
+
+    if (!email || !password) {
+        showAuthError('Please enter your email and password.');
+        return;
+    }
+
+    if (button) {
+        button.disabled = true;
+        button.textContent = isRegister ? 'Creating account...' : 'Signing in...';
+    }
+
+    try {
+        const endpoint = isRegister
+            ? '/v1/auth/register'
+            : '/v1/auth/login';
+
+        const data = await apiFetch(endpoint, {
+            method: 'POST',
+            body: JSON.stringify({
+                email,
+                password
+            })
+        });
+
+        if (!data?.access_token) {
+            throw new Error('Authentication succeeded but no access token was returned.');
+        }
+
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('user_email', email);
+
+        showApp();
+
+    } catch (err) {
+        showAuthError(err.message || 'Authentication failed.');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = isRegister ? 'Create Account' : 'Sign In';
+        }
+    }
+}
+
+function showAuthError(message) {
+    const error = document.getElementById('auth-error');
+
+    if (!error) {
+        return;
+    }
+
+    error.textContent = message;
+    error.classList.remove('hidden');
+}
+
+async function logout() {
+    try {
+        await apiFetch('/v1/auth/logout', {
+            method: 'POST'
+        });
+    } catch {
+        // Continue with local logout even if the API request fails.
+    }
+
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('user_email');
+
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+
+    window.location.reload();
+}
+
+
+/* =========================================================
+   APP DISPLAY
+========================================================= */
+
+function showApp() {
+    const authScreen = document.getElementById('auth-screen');
+    const appShell = document.getElementById('app-shell');
+
+    if (authScreen) {
+        authScreen.classList.add('hidden');
+    }
+
+    if (appShell) {
+        appShell.classList.remove('hidden');
+    }
+
+    const email = localStorage.getItem('user_email');
+
+    const userDisplay = document.getElementById('user-display');
+
+    if (userDisplay) {
+        userDisplay.textContent = email || 'Account';
+    }
+
+    switchTab(currentTab);
+
+    if (pollTimer) {
+        clearInterval(pollTimer);
+    }
+
+    pollTimer = setInterval(() => {
+        refreshCurrentView();
+    }, 3000);
 
     refreshCurrentView();
 }
 
-function showApp(email) {
-    document.getElementById('auth-card').classList.add('hidden');
-    document.getElementById('app-shell').classList.remove('hidden');
-    document.getElementById('user-display').innerText = email;
 
-    switchTab('dashboard');
+/* =========================================================
+   NAVIGATION
+========================================================= */
 
-    if (!pollTimer) {
-        pollTimer = setInterval(refreshCurrentView, 3000);
+function switchTab(tabName) {
+    currentTab = tabName;
+
+    document.querySelectorAll('.tab-view').forEach(view => {
+        view.classList.add('hidden');
+    });
+
+    document.querySelectorAll('.nav-btn').forEach(button => {
+        button.classList.remove('active');
+    });
+
+    const activeView = document.getElementById(`view-${tabName}`);
+    const activeButton = document.getElementById(`tab-${tabName}`);
+
+    if (activeView) {
+        activeView.classList.remove('hidden');
     }
+
+    if (activeButton) {
+        activeButton.classList.add('active');
+    }
+
+    refreshCurrentView();
+
+    closeMobileMenu();
 }
 
-function refreshCurrentView() {
-    if (currentTab === 'dashboard') {
-        fetchAccountData();
-    } else if (currentTab === 'signals') {
-        fetchSignals();
-    } else if (currentTab === 'journal') {
-        fetchJournal();
-    } else if (currentTab === 'profile') {
-        fetchDevices();
-    }
-}
-
-async function handleAuth() {
-    document.getElementById('auth-error').innerText = '';
-    const e = document.getElementById('email').value.trim();
-    const p = document.getElementById('password').value;
-    const endpoint = isRegister ? '/v1/auth/register' : '/v1/auth/login';
-
-    try {
-        const res = await fetch(API_URL + endpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: e, password: p })
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Authentication failed');
-
-        if (isRegister) {
-            alert('Registration successful! Please login.');
-            toggleAuthMode();
-        } else {
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('user_email', e);
-            showApp(e);
-        }
-    } catch (err) {
-        document.getElementById('auth-error').innerText = err.message;
-    }
-}
-
-async function logout() {
-    if (pollTimer) clearInterval(pollTimer);
-    const token = localStorage.getItem('access_token');
-    if (token) {
-        await fetch(API_URL + '/v1/auth/logout', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-    }
-    localStorage.clear();
-    location.reload();
-}
-
-async function fetchAccountData() {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-
-    try {
-        const res = await fetch(API_URL + '/v1/account', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-            const statusTag = document.getElementById('conn-status');
-
-            if (data.status === 'NO_DEVICE_SNAPSHOT') {
-                document.getElementById('val-balance').innerText = 'No Device';
-                document.getElementById('val-equity').innerText = 'No Device';
-                document.getElementById('val-broker').innerText = 'N/A';
-                document.getElementById('val-account').innerText = 'N/A';
-                statusTag.innerText = 'NO DEVICE';
-                statusTag.className = 'status-tag status-wait';
-                return;
-            }
-
-            statusTag.innerText = 'CONNECTED';
-            statusTag.className = 'status-tag status-live';
-            document.getElementById('last-update').innerText = new Date().toLocaleTimeString();
-
-            const snap = data.snapshot || {};
-            const mt5 = snap.mt5 || {};
-            const accountInfo = mt5.account || snap.account || snap;
-
-            document.getElementById('val-balance').innerText = (accountInfo.balance ?? '-') + ' ' + (accountInfo.currency || '');
-            document.getElementById('val-equity').innerText = (accountInfo.equity ?? '-') + ' ' + (accountInfo.currency || '');
-            document.getElementById('val-broker').innerText = accountInfo.company || accountInfo.broker || '-';
-            document.getElementById('val-account').innerText = accountInfo.login || accountInfo.account_number || '-';
-
-            renderWatchlist(mt5.quotes || {});
-
-            const positions = mt5.positions || [];
-            document.getElementById('pos-count').innerText = positions.length;
-            const posBody = document.getElementById('pos-table-body');
-            posBody.innerHTML = positions.length === 0 ? '<tr><td colspan="6" style="text-align:center; color:#94a3b8;">No open positions</td></tr>' :
-                positions.map(p => `
-                    <tr>
-                        <td>${p.ticket}</td>
-                        <td>${p.symbol}</td>
-                        <td class="${p.type === 0 ? 'buy' : 'sell'}">${p.type === 0 ? 'BUY' : 'SELL'}</td>
-                        <td>${p.volume}</td>
-                        <td>${p.price_open}</td>
-                        <td style="color:${p.profit >= 0 ? '#4ade80' : '#f87171'}">${p.profit}</td>
-                    </tr>
-                `).join('');
-
-            const orders = mt5.orders || [];
-            document.getElementById('orders-count').innerText = orders.length;
-            const orderBody = document.getElementById('orders-table-body');
-            orderBody.innerHTML = orders.length === 0 ? '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">No pending orders</td></tr>' :
-                orders.map(o => `
-                    <tr>
-                        <td>${o.ticket}</td>
-                        <td>${o.symbol}</td>
-                        <td>${o.type}</td>
-                        <td>${o.volume_initial}</td>
-                        <td>${o.price_open}</td>
-                    </tr>
-                `).join('');
-
-            renderHistoryAndAnalytics((mt5.history && mt5.history.deals) ? mt5.history.deals : [], accountInfo.currency || '');
-        }
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-async function fetchSignals() {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-
-    try {
-        const res = await fetch(API_URL + '/v1/signals', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-            const container = document.getElementById('signals-container');
-            const signals = data.signals || [];
-
-            if (signals.length === 0) {
-                container.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:20px;">No active trade signals generated. Connect MT5 connector to enable real-time analysis.</div>';
-                return;
-            }
-
-            container.innerHTML = signals.map(s => `
-                <div class="signal-card">
-                    <div class="signal-header">
-                        <div>
-                            <span style="font-size:1.2em; font-weight:bold;">${s.symbol}</span>
-                            <span class="${s.type === 'BUY' ? 'buy' : 'sell'}" style="margin-left:10px;">${s.type}</span>
-                        </div>
-                        <div>
-                            <span style="font-size:0.8em; color:#94a3b8; border:1px solid #475569; padding:2px 6px; border-radius:4px;">${s.timeframe}</span>
-                            <span class="status-tag status-live" style="margin-left:5px;">${s.strength}</span>
-                        </div>
-                    </div>
-                    <div style="font-size:0.9em; color:#cbd5e1; margin-bottom:10px;">
-                        <b>Strategy:</b> ${s.strategy} | <b>Risk-Reward:</b> ${s.rr}
-                    </div>
-                    <div class="signal-body">
-                        <div><span style="color:#94a3b8; font-size:0.8em;">Entry</span><br><b>${s.entry}</b></div>
-                        <div><span style="color:#f87171; font-size:0.8em;">Stop Loss</span><br><b style="color:#f87171;">${s.sl}</b></div>
-                        <div><span style="color:#4ade80; font-size:0.8em;">Take Profit 1</span><br><b style="color:#4ade80;">${s.tp1}</b></div>
-                        <div><span style="color:#34d399; font-size:0.8em;">Take Profit 2</span><br><b style="color:#34d399;">${s.tp2}</b></div>
-                    </div>
-                    <div style="font-size:0.85em; color:#94a3b8; margin-top:10px; background:#0f172a; padding:8px; border-radius:4px;">
-                        <b>Confluence Reason:</b> ${s.confluence}
-                    </div>
-                </div>
-            `).join('');
-        }
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-async function saveJournalEntry() {
-    const ticket = document.getElementById('journal-ticket').value;
-    const setup = document.getElementById('journal-setup').value;
-    const notes = document.getElementById('journal-notes').value;
-    const token = localStorage.getItem('access_token');
-
-    if (!ticket || !notes) {
-        alert('Please enter a ticket number and notes.');
+async function refreshCurrentView() {
+    if (!getToken()) {
         return;
     }
 
     try {
-        const res = await fetch(API_URL + '/v1/journal/save', {
-            method: 'POST',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + token 
-            },
-            body: JSON.stringify({ ticket: parseInt(ticket), setup_type: setup, notes: notes })
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-            alert('Journal entry saved to cloud database!');
-            document.getElementById('journal-ticket').value = '';
-            document.getElementById('journal-setup').value = '';
-            document.getElementById('journal-notes').value = '';
-            fetchJournal();
-        } else {
-            alert(data.error || 'Failed to save journal');
+        switch (currentTab) {
+            case 'dashboard':
+                await fetchAccountData();
+                break;
+
+            case 'signals':
+                await fetchSignals();
+                break;
+
+            case 'calendar':
+                // Calendar is currently frontend-only.
+                break;
+
+            case 'journal':
+                await fetchJournal();
+                break;
+
+            case 'news':
+                // News is currently frontend-only.
+                break;
+
+            case 'profile':
+                await fetchDevices();
+                break;
         }
-    } catch (err) {
-        alert('Error saving journal');
+    } catch (error) {
+        console.error('Refresh error:', error);
+    }
+}
+
+
+/* =========================================================
+   ACCOUNT / MT5 DATA
+========================================================= */
+
+async function fetchAccountData() {
+    const data = await apiFetch('/v1/account');
+
+    if (!data) {
+        return;
+    }
+
+    const snapshot = data.snapshot || {};
+    const mt5 = snapshot.mt5 || {};
+
+    const account = mt5.account || {};
+    const quotes = mt5.quotes || {};
+    const positions = mt5.positions || [];
+    const orders = mt5.orders || [];
+    const history = mt5.history?.deals || [];
+
+    lastQuotes = quotes;
+
+    updateAccountValues(account);
+    renderWatchlist(quotes);
+    renderPositions(positions);
+    renderOrders(orders);
+    renderHistory(history);
+    renderAnalytics(history);
+
+    updateChartSymbols(quotes);
+
+    if (selectedSymbol && quotes[selectedSymbol]) {
+        updateChartForQuote(selectedSymbol, quotes[selectedSymbol]);
+    }
+
+    updateConnectionStatus(snapshot, mt5);
+}
+
+function updateAccountValues(account) {
+    const balance = document.getElementById('val-balance');
+    const equity = document.getElementById('val-equity');
+    const broker = document.getElementById('val-broker');
+    const accountNumber = document.getElementById('val-account');
+    const lastUpdate = document.getElementById('last-update');
+
+    if (balance) {
+        balance.textContent = formatNumber(account.balance);
+    }
+
+    if (equity) {
+        equity.textContent = formatNumber(account.equity);
+    }
+
+    if (broker) {
+        broker.textContent =
+            account.broker ||
+            account.company ||
+            'MT5';
+    }
+
+    if (accountNumber) {
+        accountNumber.textContent =
+            account.login ||
+            account.account ||
+            account.account_number ||
+            '—';
+    }
+
+    if (lastUpdate) {
+        lastUpdate.textContent =
+            `Updated ${new Date().toLocaleTimeString()}`;
+    }
+}
+
+function updateConnectionStatus(snapshot, mt5) {
+    const status = document.getElementById('conn-status');
+
+    if (!status) {
+        return;
+    }
+
+    const connected =
+        snapshot.connected ??
+        mt5.connected ??
+        snapshot.live ??
+        true;
+
+    if (connected) {
+        status.textContent = 'MT5 Connected';
+        status.className = 'status-pill status-success';
+    } else {
+        status.textContent = 'MT5 Offline';
+        status.className = 'status-pill status-danger';
+    }
+}
+
+
+/* =========================================================
+   WATCHLIST
+========================================================= */
+
+function renderWatchlist(quotes) {
+    const container = document.getElementById('watchlist-container');
+
+    if (!container) {
+        return;
+    }
+
+    const symbols = Object.keys(quotes || {});
+
+    if (symbols.length === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                No active market quotes available.
+            </div>
+        `;
+        return;
+    }
+
+    container.innerHTML = symbols.map(symbol => {
+        const quote = quotes[symbol] || {};
+
+        const live = quote.live !== false;
+
+        const selected =
+            selectedSymbol === symbol
+                ? ' selected'
+                : '';
+
+        if (!live) {
+            return `
+                <button
+                    type="button"
+                    class="quote-card${selected}"
+                    data-symbol="${escapeAttr(symbol)}"
+                    onclick="selectChartSymbol('${escapeAttr(symbol)}')"
+                >
+                    <div class="quote-card-top">
+                        <span class="quote-symbol">${safe(symbol)}</span>
+                        <span class="quote-offline">OFFLINE</span>
+                    </div>
+
+                    <div class="quote-offline-text">
+                        Market data unavailable
+                    </div>
+                </button>
+            `;
+        }
+
+        const bid = quote.bid;
+        const ask = quote.ask;
+        const spread = quote.spread;
+
+        const digits =
+            Number(quote.digits) > 3
+                ? 1
+                : 2;
+
+        return `
+            <button
+                type="button"
+                class="quote-card${selected}"
+                data-symbol="${escapeAttr(symbol)}"
+                onclick="selectChartSymbol('${escapeAttr(symbol)}')"
+            >
+                <div class="quote-card-top">
+                    <span class="quote-symbol">${safe(symbol)}</span>
+
+                    <span class="quote-spread">
+                        Spread:
+                        ${formatQuote(spread, digits)}
+                    </span>
+                </div>
+
+                <div class="quote-prices">
+                    <div>
+                        <span class="quote-label">Bid</span>
+                        <strong class="quote-bid">
+                            ${formatQuote(bid, quote.digits)}
+                        </strong>
+                    </div>
+
+                    <div>
+                        <span class="quote-label">Ask</span>
+                        <strong class="quote-ask">
+                            ${formatQuote(ask, quote.digits)}
+                        </strong>
+                    </div>
+                </div>
+            </button>
+        `;
+    }).join('');
+}
+
+function updateChartSymbols(quotes) {
+    const container = document.getElementById('chart-symbols');
+
+    if (!container) {
+        return;
+    }
+
+    const symbols = Object.keys(quotes || {});
+
+    if (!symbols.length) {
+        container.innerHTML = '';
+        selectedSymbol = null;
+        return;
+    }
+
+    if (!selectedSymbol || !quotes[selectedSymbol]) {
+        selectedSymbol = symbols[0];
+    }
+
+    container.innerHTML = symbols.map(symbol => `
+        <button
+            type="button"
+            class="chart-symbol-btn ${symbol === selectedSymbol ? 'active' : ''}"
+            onclick="selectChartSymbol('${escapeAttr(symbol)}')"
+        >
+            ${safe(symbol)}
+        </button>
+    `).join('');
+}
+
+function selectChartSymbol(symbol) {
+    if (!lastQuotes[symbol]) {
+        return;
+    }
+
+    selectedSymbol = symbol;
+
+    updateChartSymbols(lastQuotes);
+
+    document.querySelectorAll('.quote-card').forEach(card => {
+        card.classList.toggle(
+            'selected',
+            card.dataset.symbol === symbol
+        );
+    });
+
+    updateChartForQuote(symbol, lastQuotes[symbol]);
+}
+
+
+/* =========================================================
+   LIVE PRICE CHART
+========================================================= */
+
+function updateChartForQuote(symbol, quote) {
+    if (!quote) {
+        return;
+    }
+
+    const bid = Number(quote.bid);
+    const ask = Number(quote.ask);
+
+    if (!Number.isFinite(bid) && !Number.isFinite(ask)) {
+        setChartStatus('No live price');
+        return;
+    }
+
+    let price;
+
+    if (Number.isFinite(bid) && Number.isFinite(ask)) {
+        price = (bid + ask) / 2;
+    } else if (Number.isFinite(bid)) {
+        price = bid;
+    } else {
+        price = ask;
+    }
+
+    if (!chartHistory[symbol]) {
+        chartHistory[symbol] = [];
+    }
+
+    const history = chartHistory[symbol];
+
+    const now = Date.now();
+
+    const previous = history[history.length - 1];
+
+    if (
+        !previous ||
+        previous.price !== price ||
+        now - previous.time >= 1000
+    ) {
+        history.push({
+            time: now,
+            price
+        });
+    }
+
+    while (history.length > CHART_MAX_POINTS) {
+        history.shift();
+    }
+
+    const chartPrice = document.getElementById('chart-price');
+
+    if (chartPrice) {
+        chartPrice.textContent =
+            formatQuote(price, quote.digits);
+    }
+
+    setChartStatus('Live price · Read-only');
+
+    drawPriceChart(symbol);
+
+    const empty = document.getElementById('chart-empty');
+
+    if (empty) {
+        empty.classList.toggle(
+            'hidden',
+            history.length > 0
+        );
+    }
+}
+
+function setChartStatus(text) {
+    const status = document.getElementById('chart-status');
+
+    if (status) {
+        status.textContent = text;
+    }
+}
+
+function drawPriceChart(symbol) {
+    const canvas = document.getElementById('price-chart');
+
+    if (!canvas) {
+        return;
+    }
+
+    const wrapper = canvas.parentElement;
+
+    const width = Math.max(
+        wrapper?.clientWidth || 700,
+        300
+    );
+
+    const height = Math.max(
+        wrapper?.clientHeight || 320,
+        240
+    );
+
+    const ratio = window.devicePixelRatio || 1;
+
+    canvas.width = width * ratio;
+    canvas.height = height * ratio;
+
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+        return;
+    }
+
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    ctx.clearRect(0, 0, width, height);
+
+    drawChartGrid(ctx, width, height);
+
+    const history = chartHistory[symbol] || [];
+
+    if (history.length < 2) {
+        return;
+    }
+
+    const prices = history.map(point => point.price);
+
+    let min = Math.min(...prices);
+    let max = Math.max(...prices);
+
+    if (min === max) {
+        const padding =
+            Math.abs(min) * 0.0001 || 0.0001;
+
+        min -= padding;
+        max += padding;
+    }
+
+    const range = max - min;
+
+    const paddingLeft = 52;
+    const paddingRight = 20;
+    const paddingTop = 24;
+    const paddingBottom = 32;
+
+    const plotWidth =
+        width - paddingLeft - paddingRight;
+
+    const plotHeight =
+        height - paddingTop - paddingBottom;
+
+    const points = history.map((point, index) => {
+        const x =
+            paddingLeft +
+            (index / (history.length - 1)) * plotWidth;
+
+        const y =
+            paddingTop +
+            (1 - (point.price - min) / range) *
+            plotHeight;
+
+        return {
+            x,
+            y,
+            price: point.price
+        };
+    });
+
+    // Area
+    const areaGradient =
+        ctx.createLinearGradient(
+            0,
+            paddingTop,
+            0,
+            height
+        );
+
+    areaGradient.addColorStop(
+        0,
+        'rgba(22, 119, 255, 0.18)'
+    );
+
+    areaGradient.addColorStop(
+        1,
+        'rgba(22, 119, 255, 0)'
+    );
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+        points[0].x,
+        height - paddingBottom
+    );
+
+    points.forEach(point => {
+        ctx.lineTo(point.x, point.y);
+    });
+
+    ctx.lineTo(
+        points[points.length - 1].x,
+        height - paddingBottom
+    );
+
+    ctx.closePath();
+
+    ctx.fillStyle = areaGradient;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+
+    points.forEach((point, index) => {
+        if (index === 0) {
+            ctx.moveTo(point.x, point.y);
+        } else {
+            ctx.lineTo(point.x, point.y);
+        }
+    });
+
+    ctx.strokeStyle = '#1677ff';
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    ctx.stroke();
+
+    // Current price dot
+    const last = points[points.length - 1];
+
+    ctx.beginPath();
+    ctx.arc(
+        last.x,
+        last.y,
+        4,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.fillStyle = '#1677ff';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(
+        last.x,
+        last.y,
+        7,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.strokeStyle =
+        'rgba(22, 119, 255, 0.22)';
+
+    ctx.lineWidth = 2;
+
+    ctx.stroke();
+
+    // Price label
+    ctx.fillStyle = '#172033';
+    ctx.font = '600 12px system-ui, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    ctx.fillText(
+        formatQuote(last.price),
+        width - 10,
+        last.y
+    );
+}
+
+function drawChartGrid(ctx, width, height) {
+    const paddingLeft = 52;
+    const paddingRight = 20;
+    const paddingTop = 24;
+    const paddingBottom = 32;
+
+    const rows = 5;
+
+    ctx.strokeStyle = 'rgba(23, 32, 51, 0.07)';
+    ctx.lineWidth = 1;
+
+    for (let i = 0; i <= rows; i++) {
+        const y =
+            paddingTop +
+            (i / rows) *
+            (height - paddingTop - paddingBottom);
+
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(width - paddingRight, y);
+        ctx.stroke();
+    }
+
+    const columns = 6;
+
+    for (let i = 0; i <= columns; i++) {
+        const x =
+            paddingLeft +
+            (i / columns) *
+            (width - paddingLeft - paddingRight);
+
+        ctx.beginPath();
+        ctx.moveTo(x, paddingTop);
+        ctx.lineTo(x, height - paddingBottom);
+        ctx.stroke();
+    }
+}
+
+window.addEventListener('resize', () => {
+    if (selectedSymbol) {
+        drawPriceChart(selectedSymbol);
+    }
+});
+
+
+/* =========================================================
+   POSITIONS
+========================================================= */
+
+function renderPositions(positions) {
+    const body = document.getElementById('pos-table-body');
+    const count = document.getElementById('pos-count');
+
+    if (count) {
+        count.textContent = positions.length;
+    }
+
+    if (!body) {
+        return;
+    }
+
+    if (!positions.length) {
+        body.innerHTML = `
+            <tr>
+                <td colspan="8" class="table-empty">
+                    No open positions.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    body.innerHTML = positions.map(position => {
+        const type =
+            String(
+                position.type ??
+                position.side ??
+                ''
+            ).toUpperCase();
+
+        const buy = type.includes('BUY');
+
+        const profit = Number(
+            position.profit ??
+            position.pnl ??
+            0
+        );
+
+        return `
+            <tr>
+                <td>${safe(position.ticket ?? position.id ?? '—')}</td>
+                <td>${safe(position.symbol ?? '—')}</td>
+                <td>
+                    <span class="${buy ? 'buy' : 'sell'}">
+                        ${buy ? 'BUY' : 'SELL'}
+                    </span>
+                </td>
+                <td>${formatNumber(position.volume ?? position.lots)}</td>
+                <td>${formatNumber(position.price_open ?? position.open_price)}</td>
+                <td>${formatNumber(position.sl ?? position.stop_loss)}</td>
+                <td>${formatNumber(position.tp ?? position.take_profit)}</td>
+                <td class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">
+                    ${formatNumber(profit)}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+
+/* =========================================================
+   ORDERS
+========================================================= */
+
+function renderOrders(orders) {
+    const body = document.getElementById('orders-table-body');
+    const count = document.getElementById('orders-count');
+
+    if (count) {
+        count.textContent = orders.length;
+    }
+
+    if (!body) {
+        return;
+    }
+
+    if (!orders.length) {
+        body.innerHTML = `
+            <tr>
+                <td colspan="7" class="table-empty">
+                    No pending orders.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    body.innerHTML = orders.map(order => {
+        const type =
+            String(
+                order.type ??
+                order.side ??
+                ''
+            ).toUpperCase();
+
+        const buy = type.includes('BUY');
+
+        return `
+            <tr>
+                <td>${safe(order.ticket ?? order.id ?? '—')}</td>
+                <td>${safe(order.symbol ?? '—')}</td>
+                <td>
+                    <span class="${buy ? 'buy' : 'sell'}">
+                        ${safe(type || '—')}
+                    </span>
+                </td>
+                <td>${formatNumber(order.volume ?? order.lots)}</td>
+                <td>${formatNumber(order.price_open ?? order.price)}</td>
+                <td>${formatNumber(order.sl ?? order.stop_loss)}</td>
+                <td>${formatNumber(order.tp ?? order.take_profit)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+
+/* =========================================================
+   HISTORY
+========================================================= */
+
+function renderHistory(history) {
+    const body = document.getElementById('history-table-body');
+    const count = document.getElementById('history-count');
+
+    if (count) {
+        count.textContent = history.length;
+    }
+
+    if (!body) {
+        return;
+    }
+
+    if (!history.length) {
+        body.innerHTML = `
+            <tr>
+                <td colspan="7" class="table-empty">
+                    No trade history available.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    const recent = [...history].reverse();
+
+    body.innerHTML = recent.map(deal => {
+        const type =
+            String(
+                deal.type ??
+                deal.side ??
+                ''
+            ).toUpperCase();
+
+        const buy = type.includes('BUY');
+
+        const profit = Number(
+            deal.profit ??
+            deal.pnl ??
+            0
+        );
+
+        return `
+            <tr>
+                <td>${safe(deal.ticket ?? deal.id ?? '—')}</td>
+                <td>${safe(deal.symbol ?? '—')}</td>
+                <td>
+                    <span class="${buy ? 'buy' : 'sell'}">
+                        ${safe(type || '—')}
+                    </span>
+                </td>
+                <td>${formatNumber(deal.volume ?? deal.lots)}</td>
+                <td>${formatNumber(deal.price ?? deal.price_open)}</td>
+                <td>${safe(deal.time ?? deal.timestamp ?? '—')}</td>
+                <td class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">
+                    ${formatNumber(profit)}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+
+/* =========================================================
+   ANALYTICS
+========================================================= */
+
+function renderAnalytics(history) {
+    const totalTrades = history.length;
+
+    let totalPL = 0;
+    let wins = 0;
+    let losses = 0;
+    let grossProfit = 0;
+    let grossLoss = 0;
+
+    history.forEach(deal => {
+        const profit = Number(
+            deal.profit ??
+            deal.pnl ??
+            0
+        );
+
+        totalPL += profit;
+
+        if (profit > 0) {
+            wins++;
+            grossProfit += profit;
+        } else if (profit < 0) {
+            losses++;
+            grossLoss += Math.abs(profit);
+        }
+    });
+
+    const winRate =
+        totalTrades > 0
+            ? (wins / totalTrades) * 100
+            : 0;
+
+    const profitFactor =
+        grossLoss > 0
+            ? grossProfit / grossLoss
+            : grossProfit > 0
+                ? Infinity
+                : 0;
+
+    const trades = document.getElementById('analytics-trades');
+    const pl = document.getElementById('analytics-pl');
+    const winrate = document.getElementById('analytics-winrate');
+    const pf = document.getElementById('analytics-pf');
+
+    if (trades) {
+        trades.textContent = totalTrades;
+    }
+
+    if (pl) {
+        pl.textContent = formatNumber(totalPL);
+        pl.className =
+            totalPL >= 0
+                ? 'metric-value profit-pos'
+                : 'metric-value profit-neg';
+    }
+
+    if (winrate) {
+        winrate.textContent =
+            `${winRateSafe(winRate)}%`;
+    }
+
+    if (pf) {
+        pf.textContent =
+            profitFactor === Infinity
+                ? '∞'
+                : profitFactor.toFixed(2);
+    }
+}
+
+function winRateSafe(value) {
+    if (!Number.isFinite(value)) {
+        return '0.0';
+    }
+
+    return value.toFixed(1);
+}
+
+
+/* =========================================================
+   SIGNALS
+========================================================= */
+
+async function fetchSignals() {
+    const container =
+        document.getElementById('signals-container');
+
+    if (!container) {
+        return;
+    }
+
+    try {
+        const data = await apiFetch('/v1/signals');
+
+        const signals =
+            Array.isArray(data)
+                ? data
+                : data?.signals || [];
+
+        if (!signals.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    No trade signals are currently available.
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = signals.map(signal => {
+            const direction =
+                String(
+                    signal.direction ??
+                    signal.side ??
+                    signal.action ??
+                    ''
+                ).toUpperCase();
+
+            const buy =
+                direction === 'BUY';
+
+            const strength =
+                signal.strength ??
+                signal.confidence ??
+                '—';
+
+            return `
+                <article class="signal-card">
+                    <div class="signal-header">
+                        <div>
+                            <span class="signal-symbol">
+                                ${safe(signal.symbol ?? 'Unknown')}
+                            </span>
+
+                            <span class="signal-timeframe">
+                                ${safe(signal.timeframe ?? '—')}
+                            </span>
+                        </div>
+
+                        <span class="signal-direction ${buy ? 'buy' : 'sell'}">
+                            ${safe(direction || '—')}
+                        </span>
+                    </div>
+
+                    <div class="signal-grid">
+                        <div class="signal-item">
+                            <span>Strength</span>
+                            <strong>${safe(strength)}</strong>
+                        </div>
+
+                        <div class="signal-item">
+                            <span>Strategy</span>
+                            <strong>${safe(signal.strategy ?? '—')}</strong>
+                        </div>
+
+                        <div class="signal-item">
+                            <span>Risk / Reward</span>
+                            <strong>${safe(signal.risk_reward ?? signal.rr ?? '—')}</strong>
+                        </div>
+
+                        <div class="signal-item">
+                            <span>Entry</span>
+                            <strong>${formatNumber(signal.entry)}</strong>
+                        </div>
+
+                        <div class="signal-item">
+                            <span>Stop Loss</span>
+                            <strong>${formatNumber(signal.stop_loss ?? signal.sl)}</strong>
+                        </div>
+
+                        <div class="signal-item">
+                            <span>TP1</span>
+                            <strong>${formatNumber(signal.tp1)}</strong>
+                        </div>
+
+                        <div class="signal-item">
+                            <span>TP2</span>
+                            <strong>${formatNumber(signal.tp2)}</strong>
+                        </div>
+                    </div>
+
+                    <div class="signal-confluence">
+                        <span>Confluence</span>
+                        <p>
+                            ${safe(
+                                Array.isArray(signal.confluence)
+                                    ? signal.confluence.join(' · ')
+                                    : signal.confluence ?? '—'
+                            )}
+                        </p>
+                    </div>
+
+                    <div class="read-only-note">
+                        Read-only market analysis
+                    </div>
+                </article>
+            `;
+        }).join('');
+
+    } catch (error) {
+        container.innerHTML = `
+            <div class="empty-state error-state">
+                Unable to load signals.
+                <small>${safe(error.message)}</small>
+            </div>
+        `;
+    }
+}
+
+
+/* =========================================================
+   JOURNAL
+========================================================= */
+
+async function saveJournal() {
+    const ticket =
+        document.getElementById('journal-ticket')?.value.trim();
+
+    const setup =
+        document.getElementById('journal-setup')?.value.trim();
+
+    const notes =
+        document.getElementById('journal-notes')?.value.trim();
+
+    if (!setup && !notes) {
+        alert('Please enter a setup or journal note.');
+        return;
+    }
+
+    try {
+        await apiFetch('/v1/journal/save', {
+            method: 'POST',
+            body: JSON.stringify({
+                ticket,
+                setup,
+                notes
+            })
+        });
+
+        const ticketInput =
+            document.getElementById('journal-ticket');
+
+        const setupInput =
+            document.getElementById('journal-setup');
+
+        const notesInput =
+            document.getElementById('journal-notes');
+
+        if (ticketInput) {
+            ticketInput.value = '';
+        }
+
+        if (setupInput) {
+            setupInput.value = '';
+        }
+
+        if (notesInput) {
+            notesInput.value = '';
+        }
+
+        await fetchJournal();
+
+    } catch (error) {
+        alert(
+            `Unable to save journal entry: ${error.message}`
+        );
     }
 }
 
 async function fetchJournal() {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
+    const container =
+        document.getElementById('journal-list-container');
 
-    try {
-        const res = await fetch(API_URL + '/v1/journal', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-            const container = document.getElementById('journal-list-container');
-            const entries = data.journal || [];
-
-            if (entries.length === 0) {
-                container.innerHTML = '<div style="color:#94a3b8; text-align:center; padding:15px;">No account trades or transactions pulled yet. Make sure your MT5 connector is connected.</div>';
-                return;
-            }
-
-            container.innerHTML = entries.map(e => {
-                const isProfit = e.profit >= 0;
-                const profitText = e.profit !== 0 ? `<b style="color:${isProfit ? '#4ade80' : '#f87171'};">${e.profit.toFixed(2)}</b>` : '';
-                
-                return `
-                    <div style="background:#0f172a; padding:14px; border-radius:6px; margin-bottom:12px; border-left:4px solid ${e.type === 'DEPOSIT/WITHDRAWAL' ? '#eab308' : (isProfit ? '#4ade80' : '#f87171')};">
-                        <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.95em;">
-                            <div>
-                                <b style="font-size:1.1em;">${e.symbol}</b> 
-                                <span class="${e.type === 'BUY' ? 'buy' : 'sell'}" style="margin-left:8px;">${e.type}</span>
-                                <span style="color:#94a3b8; font-size:0.85em; margin-left:8px;">Vol: ${e.volume} | Ticket #${e.ticket}</span>
-                            </div>
-                            <div>
-                                ${profitText}
-                                <span style="color:#94a3b8; font-size:0.8em; margin-left:10px;">${e.time ? new Date(e.time * 1000).toLocaleString() : ''}</span>
-                            </div>
-                        </div>
-                        <div style="font-size:0.85em; color:#38bdf8; margin-top:6px;">
-                            <b>Setup:</b> ${e.setup_type} ${e.comment ? `(${e.comment})` : ''}
-                        </div>
-                        <div style="font-size:0.9em; margin-top:6px; color:#cbd5e1; background:#1e293b; padding:8px; border-radius:4px;">
-                            ${e.notes}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
-    } catch (err) {
-        console.error(err);
-    }
-}
-
-function renderWatchlist(quotes) {
-    const container = document.getElementById('watchlist-container');
-    const syms = Object.keys(quotes);
-    if (syms.length === 0) {
-        container.innerHTML = '<div style="color: #94a3b8; grid-column: 1 / -1;">No active market quotes available</div>';
+    if (!container) {
         return;
     }
-    container.innerHTML = syms.map(sym => {
-        const q = quotes[sym];
-        if (!q.live) return `<div class="quote-card" style="border-left-color:#64748b;"><div class="quote-sym">${sym} <span style="font-size:0.7em; color:#94a3b8;">OFFLINE</span></div></div>`;
-        return `
-            <div class="quote-card">
-                <div class="quote-sym">${sym} <span style="font-size:0.7em; color:#38bdf8;">Spread: ${(q.spread ?? 0).toFixed(q.digits > 3 ? 1 : 2)}</span></div>
-                <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:0.9em;">
-                    <span>Bid: <b style="color:#f87171;">${q.bid}</b></span>
-                    <span>Ask: <b style="color:#4ade80;">${q.ask}</b></span>
+
+    try {
+        const data = await apiFetch('/v1/journal');
+
+        const entries =
+            Array.isArray(data)
+                ? data
+                : data?.journal || data?.entries || [];
+
+        if (!entries.length) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    No journal entries yet.
                 </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = entries.map(entry => `
+            <article class="journal-entry">
+                <div class="journal-entry-header">
+                    <div>
+                        <strong>
+                            ${safe(
+                                entry.setup ||
+                                entry.title ||
+                                'Journal Entry'
+                            )}
+                        </strong>
+
+                        ${
+                            entry.ticket
+                                ? `<span class="journal-ticket">
+                                    #${safe(entry.ticket)}
+                                   </span>`
+                                : ''
+                        }
+                    </div>
+
+                    <time>
+                        ${safe(
+                            entry.created_at ||
+                            entry.timestamp ||
+                            entry.date ||
+                            ''
+                        )}
+                    </time>
+                </div>
+
+                <p>
+                    ${safe(
+                        entry.notes ||
+                        entry.note ||
+                        ''
+                    )}
+                </p>
+            </article>
+        `).join('');
+
+    } catch (error) {
+        container.innerHTML = `
+            <div class="empty-state error-state">
+                Unable to load journal.
+                <small>${safe(error.message)}</small>
             </div>
         `;
-    }).join('');
-}
-
-function renderHistoryAndAnalytics(deals, currency) {
-    document.getElementById('history-count').innerText = deals.length;
-    const historyBody = document.getElementById('history-table-body');
-    if (deals.length === 0) {
-        historyBody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#94a3b8;">No closed deals</td></tr>';
-        return;
     }
-    let totalPL = 0, wins = 0, grossProfit = 0, grossLoss = 0;
-    historyBody.innerHTML = deals.map(d => {
-        const profit = d.profit || 0;
-        totalPL += profit;
-        if (profit > 0) { wins++; grossProfit += profit; }
-        else if (profit < 0) { grossLoss += Math.abs(profit); }
-        return `
-            <tr>
-                <td>${d.ticket}</td>
-                <td>${d.symbol || '-'}</td>
-                <td class="${d.type === 0 ? 'buy' : 'sell'}">${d.type === 0 ? 'BUY' : 'SELL'}</td>
-                <td>${d.volume || 0}</td>
-                <td>${d.price || 0}</td>
-                <td>${d.time ? new Date(d.time * 1000).toLocaleString() : '-'}</td>
-                <td class="${profit >= 0 ? 'profit-pos' : 'profit-neg'}">${profit.toFixed(2)} ${currency}</td>
-            </tr>
-        `;
-    }).join('');
-
-    const totalTrades = deals.length;
-    document.getElementById('analytics-trades').innerText = totalTrades;
-    document.getElementById('analytics-pl').innerText = totalPL.toFixed(2) + ' ' + currency;
-    document.getElementById('analytics-winrate').innerText = (totalTrades > 0 ? ((wins / totalTrades) * 100).toFixed(1) : '0') + '%';
-    document.getElementById('analytics-pf').innerText = grossLoss > 0 ? (grossProfit / grossLoss).toFixed(2) : (grossProfit > 0 ? 'INF' : '0.00');
 }
+
+
+/* =========================================================
+   DEVICES / PROFILE
+========================================================= */
 
 async function fetchDevices() {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
+    const body =
+        document.getElementById('devices-table-body');
+
+    if (!body) {
+        return;
+    }
 
     try {
-        const res = await fetch(API_URL + '/v1/devices', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await res.json();
-        if (res.ok && data.ok) {
-            const tbody = document.getElementById('devices-table-body');
-            const devices = data.devices || [];
-            tbody.innerHTML = devices.length === 0 ? '<tr><td colspan="5" style="text-align:center; color:#94a3b8;">No devices paired</td></tr>' :
-                devices.map(d => `
-                    <tr>
-                        <td><code>${d.device_id}</code></td>
-                        <td>${new Date(d.created * 1000).toLocaleDateString()}</td>
-                        <td>${d.last_seen ? new Date(d.last_seen * 1000).toLocaleTimeString() : 'Never'}</td>
-                        <td><span class="status-tag ${d.revoked ? 'status-revoked' : 'status-live'}">${d.revoked ? 'REVOKED' : 'ACTIVE'}</span></td>
-                        <td>${!d.revoked ? `<button class="btn-danger" onclick="revokeDevice('${d.device_id}')">Revoke</button>` : '-'}</td>
-                    </tr>
-                `).join('');
+        const data = await apiFetch('/v1/devices');
+
+        const devices =
+            Array.isArray(data)
+                ? data
+                : data?.devices || [];
+
+        if (!devices.length) {
+            body.innerHTML = `
+                <tr>
+                    <td colspan="5" class="table-empty">
+                        No paired devices.
+                    </td>
+                </tr>
+            `;
+
+            return;
         }
-    } catch (err) {
-        console.error(err);
+
+        body.innerHTML = devices.map(device => `
+            <tr>
+                <td>${safe(device.name ?? device.device_name ?? 'MT5')}</td>
+                <td>${safe(device.id ?? device.device_id ?? '—')}</td>
+                <td>${safe(device.status ?? 'Active')}</td>
+                <td>${safe(device.created_at ?? device.created ?? '—')}</td>
+                <td>
+                    <button
+                        type="button"
+                        class="small-danger-btn"
+                        onclick="revokeDevice('${escapeAttr(
+                            device.id ??
+                            device.device_id ??
+                            ''
+                        )}')"
+                    >
+                        Revoke
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+    } catch (error) {
+        body.innerHTML = `
+            <tr>
+                <td colspan="5" class="table-empty">
+                    Unable to load devices.
+                </td>
+            </tr>
+        `;
     }
 }
 
 async function revokeDevice(deviceId) {
-    if (!confirm(`Revoke device ${deviceId}?`)) return;
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    try {
-        const res = await fetch(API_URL + '/v1/device/revoke', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
-            body: JSON.stringify({ device_id: deviceId })
-        });
-        if (res.ok) fetchDevices();
-    } catch (err) { alert('Error revoking device'); }
-}
-
-async function createPairingCode() {
-    const token = localStorage.getItem('access_token');
-    if (!token) return;
-    try {
-        const res = await fetch(API_URL + '/v1/pairing/create', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await res.json();
-        if (res.ok && data.code) {
-            document.getElementById('pairing-code-display').innerHTML = 'Pairing Code: <code>' + data.code + '</code>';
-        }
-    } catch (err) { alert('Error generating code'); }
-}
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/service-worker.js")
-      .then((registration) => {
-        console.log(
-          "TradePro service worker registered:",
-          registration.scope
-        );
-      })
-      .catch((error) => {
-        console.error(
-          "TradePro service worker registration failed:",
-          error
-        );
-      });
-  });
-}
-// TradePro responsive navigation
-document.addEventListener("DOMContentLoaded", () => {
-    const menuToggle = document.getElementById("menu-toggle");
-    const navigation = document.getElementById("main-navigation");
-
-    if (!menuToggle || !navigation) {
+    if (!deviceId) {
         return;
     }
 
-    menuToggle.addEventListener("click", () => {
-        const isOpen = navigation.classList.toggle("open");
-
-        menuToggle.classList.toggle("open", isOpen);
-        menuToggle.setAttribute("aria-expanded", String(isOpen));
-        menuToggle.setAttribute(
-            "aria-label",
-            isOpen ? "Close navigation menu" : "Open navigation menu"
+    const confirmed =
+        window.confirm(
+            'Revoke this device pairing?'
         );
-    });
 
-    // Close the mobile menu after selecting a section.
-    navigation.querySelectorAll(".nav-btn").forEach((button) => {
-        button.addEventListener("click", () => {
-            navigation.classList.remove("open");
-            menuToggle.classList.remove("open");
-            menuToggle.setAttribute("aria-expanded", "false");
-            menuToggle.setAttribute("aria-label", "Open navigation menu");
+    if (!confirmed) {
+        return;
+    }
+
+    try {
+        await apiFetch('/v1/device/revoke', {
+            method: 'POST',
+            body: JSON.stringify({
+                device_id: deviceId
+            })
         });
-    });
 
-    // Reset the mobile menu when returning to desktop size.
-    window.addEventListener("resize", () => {
-        if (window.innerWidth > 768) {
-            navigation.classList.remove("open");
-            menuToggle.classList.remove("open");
-            menuToggle.setAttribute("aria-expanded", "false");
-            menuToggle.setAttribute("aria-label", "Open navigation menu");
+        await fetchDevices();
+
+    } catch (error) {
+        alert(
+            `Unable to revoke device: ${error.message}`
+        );
+    }
+}
+
+async function createPairingCode() {
+    const display =
+        document.getElementById('pairing-code-display');
+
+    if (!display) {
+        return;
+    }
+
+    display.textContent = 'Generating...';
+
+    try {
+        const data =
+            await apiFetch('/v1/pairing/create', {
+                method: 'POST'
+            });
+
+        const code =
+            data?.code ??
+            data?.pairing_code ??
+            data?.pairingCode ??
+            'Unavailable';
+
+        display.textContent = code;
+
+    } catch (error) {
+        display.textContent = 'Unable to generate code';
+
+        console.error(
+            'Pairing code error:',
+            error
+        );
+    }
+}
+
+
+/* =========================================================
+   FORMATTING
+========================================================= */
+
+function formatNumber(value) {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ''
+    ) {
+        return '—';
+    }
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return safe(value);
+    }
+
+    return number.toLocaleString(
+        undefined,
+        {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
         }
-    });
-});
+    );
+}
+
+function formatQuote(value, digits) {
+    if (
+        value === null ||
+        value === undefined ||
+        value === ''
+    ) {
+        return '—';
+    }
+
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+        return safe(value);
+    }
+
+    let decimalPlaces =
+        Number.isFinite(Number(digits))
+            ? Number(digits)
+            : 5;
+
+    decimalPlaces =
+        Math.max(
+            0,
+            Math.min(decimalPlaces, 8)
+        );
+
+    return number.toLocaleString(
+        undefined,
+        {
+            minimumFractionDigits: decimalPlaces,
+            maximumFractionDigits: decimalPlaces
+        }
+    );
+}
+
+
+/* =========================================================
+   MOBILE NAVIGATION
+========================================================= */
+
+function closeMobileMenu() {
+    const navigation =
+        document.getElementById('main-navigation');
+
+    const toggle =
+        document.getElementById('menu-toggle');
+
+    if (navigation) {
+        navigation.classList.remove('open');
+    }
+
+    if (toggle) {
+        toggle.setAttribute(
+            'aria-expanded',
+            'false'
+        );
+    }
+}
+
+function toggleMobileMenu() {
+    const navigation =
+        document.getElementById('main-navigation');
+
+    const toggle =
+        document.getElementById('menu-toggle');
+
+    if (!navigation) {
+        return;
+    }
+
+    const open =
+        navigation.classList.toggle('open');
+
+    if (toggle) {
+        toggle.setAttribute(
+            'aria-expanded',
+            open ? 'true' : 'false'
+        );
+    }
+}
+
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+document.addEventListener(
+    'DOMContentLoaded',
+    () => {
+        const menuToggle =
+            document.getElementById('menu-toggle');
+
+        if (menuToggle) {
+            menuToggle.addEventListener(
+                'click',
+                toggleMobileMenu
+            );
+        }
+
+        document.querySelectorAll('.nav-btn').forEach(
+            button => {
+                button.addEventListener(
+                    'click',
+                    closeMobileMenu
+                );
+            }
+        );
+
+        const authForm =
+            document.getElementById('auth-form');
+
+        if (authForm) {
+            authForm.addEventListener(
+                'submit',
+                handleAuth
+            );
+        }
+
+        const authToggle =
+            document.getElementById('auth-toggle');
+
+        if (authToggle) {
+            authToggle.addEventListener(
+                'click',
+                toggleAuthMode
+            );
+        }
+
+        const logoutButton =
+            document.getElementById('logout-btn');
+
+        if (logoutButton) {
+            logoutButton.addEventListener(
+                'click',
+                logout
+            );
+        }
+
+        const pairingButton =
+            document.getElementById('create-pairing-btn');
+
+        if (pairingButton) {
+            pairingButton.addEventListener(
+                'click',
+                createPairingCode
+            );
+        }
+
+        if (getToken()) {
+            showApp();
+        } else {
+            const authScreen =
+                document.getElementById('auth-screen');
+
+            const appShell =
+                document.getElementById('app-shell');
+
+            if (authScreen) {
+                authScreen.classList.remove('hidden');
+            }
+
+            if (appShell) {
+                appShell.classList.add('hidden');
+            }
+        }
+    }
+);
+
+
+/* =========================================================
+   SERVICE WORKER
+========================================================= */
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener(
+        'load',
+        () => {
+            navigator.serviceWorker
+                .register('/service-worker.js')
+                .then(registration => {
+                    console.log(
+                        'TradePro service worker registered:',
+                        registration.scope
+                    );
+                })
+                .catch(error => {
+                    console.error(
+                        'TradePro service worker registration failed:',
+                        error
+                    );
+                });
+        }
+    );
+}
