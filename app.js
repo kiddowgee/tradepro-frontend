@@ -433,3 +433,43 @@ if ("serviceWorker" in navigator) {
       });
   });
 }
+// TradePro responsive navigation
+document.addEventListener("DOMContentLoaded", () => {
+    const menuToggle = document.getElementById("menu-toggle");
+    const navigation = document.getElementById("main-navigation");
+
+    if (!menuToggle || !navigation) {
+        return;
+    }
+
+    menuToggle.addEventListener("click", () => {
+        const isOpen = navigation.classList.toggle("open");
+
+        menuToggle.classList.toggle("open", isOpen);
+        menuToggle.setAttribute("aria-expanded", String(isOpen));
+        menuToggle.setAttribute(
+            "aria-label",
+            isOpen ? "Close navigation menu" : "Open navigation menu"
+        );
+    });
+
+    // Close the mobile menu after selecting a section.
+    navigation.querySelectorAll(".nav-btn").forEach((button) => {
+        button.addEventListener("click", () => {
+            navigation.classList.remove("open");
+            menuToggle.classList.remove("open");
+            menuToggle.setAttribute("aria-expanded", "false");
+            menuToggle.setAttribute("aria-label", "Open navigation menu");
+        });
+    });
+
+    // Reset the mobile menu when returning to desktop size.
+    window.addEventListener("resize", () => {
+        if (window.innerWidth > 768) {
+            navigation.classList.remove("open");
+            menuToggle.classList.remove("open");
+            menuToggle.setAttribute("aria-expanded", "false");
+            menuToggle.setAttribute("aria-label", "Open navigation menu");
+        }
+    });
+});
