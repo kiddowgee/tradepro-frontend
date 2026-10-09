@@ -580,6 +580,12 @@ async function fetchNews() {
         setFeedStatus('news','LIVE');
     }catch(error){console.error('News refresh failed:',error);container.innerHTML=`<div class="empty-state error-state">Unable to load financial news.<small>${safe(error.message)}</small></div>`;setFeedStatus('news','ERROR');}
 }
+function setChartStatus(status) {
+    const el = $('chart-status');
+    if (!el) return;
+    el.textContent = status;
+    el.className = `status-tag ${status === 'LIVE' ? 'status-live' : 'status-wait'}`;
+}
 function setFeedStatus(feed,status){const el=$(feed==='calendar'?'calendar-status':'news-status');if(!el)return;el.textContent=status;el.className=`status-tag ${status==='LIVE'?'status-live':'status-wait'}`;}
 
 async function fetchDevices() {
