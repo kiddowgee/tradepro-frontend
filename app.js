@@ -3,6 +3,33 @@ const API_URL = 'https://api.tradeassist.online';
 let isRegister = false;
 let pollTimer = null;
 let currentTab = 'dashboard';
+const DASHBOARD_SYMBOL_GROUPS = [
+    { label: 'GOLD', aliases: ['XAUUSD', 'GOLD'] },
+    { label: 'USTECH', aliases: ['USTECH', 'USTEC', 'NASDAQ100', 'NAS100'] },
+    { label: 'EURUSD', aliases: ['EURUSD'] },
+    { label: 'USDJPY', aliases: ['USDJPY'] },
+    { label: 'GBPUSD', aliases: ['GBPUSD'] }
+];
+
+function dashboardSymbolGroup(symbol) {
+    const normalized = String(symbol).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    return DASHBOARD_SYMBOL_GROUPS.find(group =>
+        group.aliases.some(alias => normalized === alias || normalized.startsWith(alias))
+    );
+}
+
+function getDashboardSymbols(quotes) {
+    const available = Object.keys(quotes || {});
+    return DASHBOARD_SYMBOL_GROUPS.map(group => {
+        return available.find(symbol => dashboardSymbolGroup(symbol) === group) || null;
+    }).filter(Boolean);
+}
+
+function displayDashboardSymbol(symbol) {
+    const group = dashboardSymbolGroup(symbol);
+    return group ? group.label : symbol;
+}
+
 let lastQuotes = {};
 let selectedSymbol = null;
 const chartBars = Object.create(null);
@@ -239,7 +266,7 @@ function updateAccountValues(account, currency) {
 function renderWatchlist(quotes) {
     const container = $('watchlist-container');
     if (!container) return;
-    const symbols = Object.keys(quotes || {});
+    const symbols = getDashboardSymbols(quotes);
     if (!symbols.length) {
         container.innerHTML = '<div class="empty-state">No market quotes available.</div>';
         setChartStatus('WAITING');
@@ -254,7 +281,7 @@ function renderWatchlist(quotes) {
         const digits = Number.isFinite(Number(q.digits)) ? Number(q.digits) : 5;
         const spread = Number(q.spread);
         return `<button class="quote-card${symbol === selectedSymbol ? ' selected' : ''}" type="button" onclick="selectChartSymbol('${escapeAttr(symbol)}')">
-            <div class="quote-card-top"><strong>${safe(symbol)}</strong><span class="quote-live ${live ? '' : 'offline'}"><span class="dot ${live ? 'dot-live' : 'dot-offline'}"></span>${live ? 'LIVE' : 'OFFLINE'}</span></div>
+            <div class="quote-card-top"><strong>${safe(displayDashboardSymbol(symbol))}</strong><span class="quote-live ${live ? '' : 'offline'}"><span class="dot ${live ? 'dot-live' : 'dot-offline'}"></span>${live ? 'LIVE' : 'OFFLINE'}</span></div>
             ${live ? `<div class="quote-prices"><div><span>Bid</span><b>${formatPrice(bid, digits)}</b></div><div><span>Ask</span><b>${formatPrice(ask, digits)}</b></div></div><div class="quote-foot"><span>Spread</span><b>${Number.isFinite(spread) ? formatPrice(spread, Math.min(digits, 5)) : '—'}</b></div>` : '<div class="quote-offline">No live price</div>'}
         </button>`;
     }).join('');
@@ -263,10 +290,10 @@ function renderWatchlist(quotes) {
 function updateChartSymbols(quotes) {
     const holder = $('chart-symbols');
     if (!holder) return;
-    const symbols = Object.keys(quotes || {});
+    const symbols = getDashboardSymbols(quotes);
     if (!symbols.length) { holder.innerHTML = ''; return; }
     if (!selectedSymbol || !quotes[selectedSymbol]) selectedSymbol = symbols[0];
-    holder.innerHTML = symbols.map(symbol => `<button type="button" class="symbol-pill ${symbol === selectedSymbol ? 'active' : ''}" onclick="selectChartSymbol('${escapeAttr(symbol)}')">${safe(symbol)}</button>`).join('');
+    holder.innerHTML = symbols.map(symbol => `<button type="button" class="symbol-pill ${symbol === selectedSymbol ? 'active' : ''}" onclick="selectChartSymbol('${escapeAttr(symbol)}')">${safe(displayDashboardSymbol(symbol))}</button>`).join('');
     updateChartForQuote(selectedSymbol, quotes[selectedSymbol]);
 }
 
@@ -355,7 +382,7 @@ function updateChartForQuote(symbol, quote, forceRedraw = false) {
     } else {
         appendLiveBar(symbol, quote);
     }
-    if ($('chart-symbol-title')) $('chart-symbol-title').textContent = symbol;
+    if ($('chart-symbol-title')) $('chart-symbol-title').textContent = displayDashboardSymbol(symbol);
     if ($('chart-price')) $('chart-price').textContent = formatPrice(price, quote.digits);
     if ($('chart-empty')) $('chart-empty').classList.toggle('hidden', (chartBars[`${symbol}:${chartTimeframe}`] || []).length > 0);
     if ($('chart-data-status')) $('chart-data-status').textContent = `Live MT5 OHLC · ${timeframeLabel(chartTimeframe)} · read-only`;
