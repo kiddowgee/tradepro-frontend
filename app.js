@@ -367,11 +367,11 @@ function drawPriceChart() {
     const canvas = $('price-chart'); if (!canvas) return;
     const wrap = canvas.parentElement; if (!wrap) return;
     const rect = wrap.getBoundingClientRect();
-    const width = Math.max(320, Math.floor(rect.width || 320));
-    const height = Math.max(250, Math.floor(rect.height || 300));
+    const width = Math.max(1, Math.floor(rect.width || 320));
+    const height = Math.max(1, Math.floor(rect.height || 270));
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
     canvas.width = Math.floor(width * dpr); canvas.height = Math.floor(height * dpr);
-    canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
+    canvas.style.width = '100%'; canvas.style.height = '100%';
     const ctx = canvas.getContext('2d'); if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, width, height);
     const data = chartData();
